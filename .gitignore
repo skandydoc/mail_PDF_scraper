@@ -23,6 +23,8 @@ var/
 # Virtual Environment
 venv/
 ENV/
+audit_logs/
+logs/
 
 # IDE
 .idea/
@@ -42,3 +44,6 @@ token.pickle
 # OS
 .DS_Store
 Thumbs.db 
+
+
+au
