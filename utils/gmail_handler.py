@@ -63,26 +63,49 @@ class GmailHandler:
                         )
                         
                         # Run the local server with a simple success message
+                        success_html = """
+                        <html>
+                            <head>
+                                <script>
+                                    function closeAndReturn() {
+                                        if (window.opener) {
+                                            window.opener.location.reload();
+                                        }
+                                        window.close();
+                                        window.location.href = 'http://localhost:8501';
+                                    }
+                                    setTimeout(closeAndReturn, 1000);
+                                </script>
+                                <style>
+                                    body { font-family: Arial, sans-serif; text-align: center; padding-top: 50px; }
+                                    .success { color: #4CAF50; }
+                                </style>
+                            </head>
+                            <body>
+                                <h2 class="success">Authentication Successful!</h2>
+                                <p>Redirecting back to application...</p>
+                            </body>
+                        </html>
+                        """
+                        
                         self.creds = flow.run_local_server(
                             port=0,  # Let the OS choose an available port
                             authorization_prompt_message='',
-                            success_message='Authentication successful! Please return to the application.',
+                            success_message=success_html,
                             open_browser=True
                         )
                         
                         logger.info("OAuth flow completed successfully")
                         
-                        # Save credentials immediately after successful authentication
+                        # Save credentials immediately
                         try:
                             logger.info("Saving credentials to token.pickle")
                             with open('token.pickle', 'wb') as token:
                                 pickle.dump(self.creds, token)
-                            # Set secure file permissions
                             os.chmod('token.pickle', 0o600)
                             logger.info("Credentials saved successfully")
                         except Exception as e:
                             logger.warning(f"Could not save credentials: {str(e)}")
-                            # Continue even if saving fails
                         
                         # Initialize service immediately
                         self.service = build('gmail', 'v1', credentials=self.creds)

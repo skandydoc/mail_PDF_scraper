@@ -57,7 +57,6 @@ def initialize_handlers():
             
             logger.info(f"Authentication successful for user: {user_info['emailAddress']}")
             st.session_state.authentication_state = 'completed'
-            st.rerun()
             return True
             
         logger.error("Authentication failed in handler initialization")
@@ -137,12 +136,13 @@ def main():
             st.warning("Please authenticate with Google to continue")
             if st.button("Authenticate"):
                 initialize_handlers()
+                st.rerun()
         
         elif st.session_state.authentication_state == 'in_progress':
             st.info("Authentication in progress... Please complete the authentication in your browser.")
-            st.spinner("Waiting for authentication to complete...")
-            time.sleep(0.5)  # Short delay to prevent too frequent reruns
-            st.rerun()
+            with st.spinner("Waiting for authentication to complete..."):
+                time.sleep(0.5)  # Short delay to prevent too frequent reruns
+                st.rerun()
         
         elif st.session_state.authentication_state == 'failed':
             st.error("Authentication failed. Please try again.")
