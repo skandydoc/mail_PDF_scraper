@@ -142,6 +142,83 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
         logger.error(f"Error processing keyword batch {keyword}: {str(e)}")
         return 0, []
 
+def initialize_handlers():
+    """Initialize Gmail and Drive handlers with authentication"""
+    try:
+        logger.info("Starting handler initialization")
+        gmail_handler = GmailHandler()
+        
+        auth_success = gmail_handler.authenticate()
+        
+        if auth_success:
+            st.session_state.gmail_handler = gmail_handler
+            st.session_state.drive_handler = DriveHandler(gmail_handler.creds)
+            
+            # Create secure session
+            user_info = gmail_handler.service.users().getProfile(userId='me').execute()
+            st.session_state.user_session = st.session_state.security.create_session(user_info['emailAddress'])
+            
+            # Log successful authentication
+            st.session_state.security.log_activity(
+                user_info['emailAddress'],
+                'authentication',
+                {'status': 'success', 'timestamp': datetime.now(ist).isoformat()}
+            )
+            
+            logger.info(f"Authentication successful for user: {user_info['emailAddress']}")
+            st.session_state.auth_completed = True
+            st.session_state.auth_error = None
+            return True
+            
+        logger.error("Authentication failed in handler initialization")
+        st.session_state.auth_completed = False
+        st.session_state.auth_error = "Authentication failed. Please try again."
+        return False
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error initializing handlers: {error_msg}")
+        st.session_state.auth_completed = False
+        st.session_state.auth_error = error_msg
+        return False
+
+def display_results_table(all_attachments):
+    """Display results in a table with integrated selection"""
+    # Create DataFrame for display
+    df_data = []
+    for att in all_attachments:
+        selected = att['id'] in st.session_state.selected_attachments
+        df_data.append({
+            'Select': selected,
+            'Subject': att['subject'],
+            'Sender': att['sender'],
+            'Date': att['date'],
+            'Filename': att['filename'],
+            'Size': att['size']
+        })
+    
+    # Display table with selection column
+    edited_df = st.data_editor(
+        df_data,
+        column_config={
+            "Select": st.column_config.CheckboxColumn(
+                "Select",
+                help="Select files to process",
+                default=False,
+            )
+        },
+        hide_index=True,
+        use_container_width=True,
+        key="results_table"
+    )
+    
+    # Update selected attachments based on table selection
+    st.session_state.selected_attachments = {
+        att['id'] for att, row in zip(all_attachments, edited_df)
+        if row['Select']
+    }
+    
+    return edited_df
+
 def main():
     logger.info("Application started")
     st.title("Secure Gmail PDF Attachment Processor")
