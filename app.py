@@ -425,15 +425,23 @@ def main():
         st.warning("Please enter at least one keyword")
         return
 
-    # Clear password cache when keywords change
-    if 'last_keywords' not in st.session_state or st.session_state.last_keywords != keywords:
+    # Password list input
+    passwords = st.text_area(
+        "Enter possible passwords (one per line)",
+        help="Enter passwords that might be needed for PDF files. These will be available for selection for each group of files."
+    ).split('\n')
+    passwords = [p.strip() for p in passwords if p.strip()]
+
+    # Clear password cache when keywords or passwords change
+    if ('last_keywords' not in st.session_state or st.session_state.last_keywords != keywords or
+        'last_passwords' not in st.session_state or st.session_state.last_passwords != passwords):
         st.session_state.pdf_handler.clear_password_cache()
         st.session_state.last_keywords = keywords
+        st.session_state.last_passwords = passwords
 
     # Initialize variables
-    exact_attachments = []
-    content_attachments = []
-    content_match_groups = {}
+    exact_matches_by_keyword = {}
+    content_matches_by_sender = {}
 
     # Search Emails
     if st.button("Search Emails"):
@@ -448,245 +456,210 @@ def main():
 
     # Display Results and Select Attachments
     if 'search_results' in st.session_state:
-        # Separate exact and content matches
-        exact_matches = []
-        content_matches = []
-        
+        # Group matches by type and keyword/sender
         for email in st.session_state.search_results:
             if email['match_type'] == 'exact':
-                exact_matches.append(email)
+                # Find matching keyword
+                matching_keyword = next((k for k in keywords if k.lower() in email['subject'].lower()), 'Other')
+                if matching_keyword not in exact_matches_by_keyword:
+                    exact_matches_by_keyword[matching_keyword] = []
+                exact_matches_by_keyword[matching_keyword].append(email)
             else:
-                content_matches.append(email)
+                sender_key = f"{email.get('sender_email', 'unknown')}"
+                if sender_key not in content_matches_by_sender:
+                    content_matches_by_sender[sender_key] = []
+                content_matches_by_sender[sender_key].append(email)
         
-        # Display exact matches
-        if exact_matches:
+        # Display exact matches by keyword
+        if exact_matches_by_keyword:
             st.subheader("Exact Matches")
             
-            # Initialize selected attachments in session state if not present
-            if 'selected_attachments' not in st.session_state:
-                st.session_state.selected_attachments = set()
-            
-            # Create a list of all attachments with their email info
-            exact_attachments = []
-            for email in exact_matches:
-                for attachment in email['attachments']:
-                    exact_attachments.append({
-                        'subject': email['subject'],
-                        'sender': email['sender'],
-                        'date': format_ist_time(email['date']),
-                        'filename': attachment['filename'],
-                        'size': f"{attachment['size']/1024:.1f} KB",
-                        'id': f"{email['id']}_{attachment['id']}",
-                        'message_id': email['id'],
-                        'attachment_id': attachment['id'],
-                        'email_date': format_file_date(email['date']),
-                        'password_hint': email.get('password_hint', '')
-                    })
-            
-            # Select all / Deselect all buttons for exact matches
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Select All Exact Matches"):
-                    st.session_state.selected_attachments = {att['id'] for att in exact_attachments}
-                    st.rerun()
-            with col2:
-                if st.button("Deselect All Exact Matches"):
-                    st.session_state.selected_attachments = set()
-                    st.rerun()
-            
-            # Display exact matches table
-            edited_df = display_results_table(exact_attachments, "exact_matches", "selected_attachments")
+            for keyword, matches in exact_matches_by_keyword.items():
+                with st.expander(f"Exact Matches - {keyword}", expanded=True):
+                    # Initialize selected attachments for this keyword
+                    keyword_key = f"selected_attachments_{keyword}"
+                    if keyword_key not in st.session_state:
+                        st.session_state[keyword_key] = set()
+                    
+                    # Password selection for this group
+                    selected_password = None
+                    if passwords:
+                        selected_password = st.selectbox(
+                            "Select password for this group",
+                            [""] + passwords,
+                            key=f"pwd_select_{keyword}"
+                        )
+                    
+                    # Create attachment list for this keyword
+                    keyword_attachments = []
+                    for email in matches:
+                        for attachment in email['attachments']:
+                            keyword_attachments.append({
+                                'subject': email['subject'],
+                                'sender': email['sender'],
+                                'sender_email': email.get('sender_email', 'Unknown'),
+                                'date': format_ist_time(email['date']),
+                                'filename': attachment['filename'],
+                                'size': f"{attachment['size']/1024:.1f} KB",
+                                'id': f"{email['id']}_{attachment['id']}",
+                                'message_id': email['id'],
+                                'attachment_id': attachment['id'],
+                                'email_date': format_file_date(email['date']),
+                                'password_hint': email.get('password_hint', ''),
+                                'password': selected_password
+                            })
+                    
+                    # Select all / Deselect all buttons
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button(f"Select All - {keyword}"):
+                            st.session_state[keyword_key] = {att['id'] for att in keyword_attachments}
+                            st.rerun()
+                    with col2:
+                        if st.button(f"Deselect All - {keyword}"):
+                            st.session_state[keyword_key] = set()
+                            st.rerun()
+                    
+                    # Display table
+                    edited_df = display_results_table(keyword_attachments, f"exact_{keyword}", keyword_key)
         
-        # Display content matches
-        if content_matches:
+        # Display content matches by sender
+        if content_matches_by_sender:
             st.subheader("Content Matches")
             
-            # Initialize selected content attachments in session state if not present
-            if 'selected_content_attachments' not in st.session_state:
-                st.session_state.selected_content_attachments = set()
-            
-            # Create a list of all content attachments with their email info and group them
-            content_attachments = []
-            content_match_groups = {}
-            
-            for email in content_matches:
-                pattern = get_pattern_from_subject(email.get('subject', ''), email.get('sender_email', 'unknown'))
-                if pattern not in content_match_groups:
-                    content_match_groups[pattern] = f"selected_content_attachments_{pattern}"
-                    if content_match_groups[pattern] not in st.session_state:
-                        st.session_state[content_match_groups[pattern]] = set()
-                
-                for attachment in email['attachments']:
-                    content_attachments.append({
-                        'subject': email.get('subject', 'No Subject'),
-                        'sender': email.get('sender', 'Unknown'),
-                        'sender_email': email.get('sender_email', 'Unknown'),
-                        'date': format_ist_time(email['date']),
-                        'filename': attachment['filename'],
-                        'size': f"{attachment['size']/1024:.1f} KB",
-                        'id': f"{email['id']}_{attachment['id']}",
-                        'message_id': email['id'],
-                        'attachment_id': attachment['id'],
-                        'email_date': format_file_date(email['date']),
-                        'password_hint': email.get('password_hint', ''),
-                        'pattern': pattern
-                    })
-            
-            # Display content matches by group
-            for pattern in content_match_groups:
-                st.subheader(f"Content Matches - {pattern}")
-                
-                # Filter attachments for this pattern
-                pattern_attachments = [att for att in content_attachments if att['pattern'] == pattern]
-                
-                # Select all / Deselect all buttons for this pattern
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button(f"Select All - {pattern}"):
-                        st.session_state[content_match_groups[pattern]] = {
-                            att['id'] for att in pattern_attachments
-                        }
-                        st.rerun()
-                with col2:
-                    if st.button(f"Deselect All - {pattern}"):
-                        st.session_state[content_match_groups[pattern]] = set()
-                        st.rerun()
-                
-                # Display pattern matches table
-                edited_df = display_results_table(
-                    pattern_attachments,
-                    f"content_matches_{pattern}",
-                    content_match_groups[pattern]
-                )
-        
-        # Get selected attachments details
-        selected_attachments = [
-            {
-                'message_id': att['message_id'],
-                'attachment_id': att['attachment_id'],
-                'filename': att['filename'],
-                'email_date': att['email_date'],
-                'password_hint': att['password_hint']
-            }
-            for att in exact_attachments
-            if att['id'] in st.session_state.selected_attachments
-        ] if exact_attachments else []
-        
-        selected_content_attachments = [
-            {
-                'message_id': att['message_id'],
-                'attachment_id': att['attachment_id'],
-                'filename': att['filename'],
-                'email_date': att['email_date'],
-                'password_hint': att['password_hint'],
-                'pattern': att['pattern']
-            }
-            for att in content_attachments
-            if any(att['id'] in st.session_state[group_key] 
-                  for pattern, group_key in content_match_groups.items())
-        ] if content_attachments else []
+            for sender, matches in content_matches_by_sender.items():
+                with st.expander(f"Content Matches - {sender}", expanded=True):
+                    # Initialize selected attachments for this sender
+                    sender_key = f"selected_content_{sender}"
+                    if sender_key not in st.session_state:
+                        st.session_state[sender_key] = set()
+                    
+                    # Password selection for this group
+                    selected_password = None
+                    if passwords:
+                        selected_password = st.selectbox(
+                            "Select password for this group",
+                            [""] + passwords,
+                            key=f"pwd_select_content_{sender}"
+                        )
+                    
+                    # Create attachment list for this sender
+                    sender_attachments = []
+                    for email in matches:
+                        for attachment in email['attachments']:
+                            sender_attachments.append({
+                                'subject': email.get('subject', 'No Subject'),
+                                'sender': email.get('sender', 'Unknown'),
+                                'sender_email': email.get('sender_email', 'Unknown'),
+                                'date': format_ist_time(email['date']),
+                                'filename': attachment['filename'],
+                                'size': f"{attachment['size']/1024:.1f} KB",
+                                'id': f"{email['id']}_{attachment['id']}",
+                                'message_id': email['id'],
+                                'attachment_id': attachment['id'],
+                                'email_date': format_file_date(email['date']),
+                                'password_hint': email.get('password_hint', ''),
+                                'password': selected_password
+                            })
+                    
+                    # Select all / Deselect all buttons
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button(f"Select All - {sender}"):
+                            st.session_state[sender_key] = {att['id'] for att in sender_attachments}
+                            st.rerun()
+                    with col2:
+                        if st.button(f"Deselect All - {sender}"):
+                            st.session_state[sender_key] = set()
+                            st.rerun()
+                    
+                    # Display table
+                    edited_df = display_results_table(sender_attachments, f"content_{sender}", sender_key)
 
-        if selected_attachments or selected_content_attachments:
+        # Get selected attachments from all groups
+        selected_exact_attachments = []
+        for keyword in exact_matches_by_keyword:
+            keyword_key = f"selected_attachments_{keyword}"
+            if keyword_key in st.session_state:
+                selected_exact_attachments.extend([
+                    att for att in keyword_attachments
+                    if att['id'] in st.session_state[keyword_key]
+                ])
+
+        selected_content_attachments = []
+        for sender in content_matches_by_sender:
+            sender_key = f"selected_content_{sender}"
+            if sender_key in st.session_state:
+                selected_content_attachments.extend([
+                    att for att in sender_attachments
+                    if att['id'] in st.session_state[sender_key]
+                ])
+
+        if selected_exact_attachments or selected_content_attachments:
             st.subheader("Upload to Google Drive")
             
             # Main folder input
             main_folder = st.text_input(
                 "Enter main Google Drive folder name",
-                help="Enter the name of the main folder where all keyword-specific folders will be created"
+                help="Enter the name of the main folder where all files will be organized"
             )
             
-            if main_folder:
-                # Create expandable sections for each keyword
-                keyword_configs = {}
-                
-                for keyword in keywords:
-                    with st.expander(f"Settings for keyword: {keyword}", expanded=True):
-                        # Show password hints if available
-                        hints = set(att['password_hint'] for att in selected_attachments + selected_content_attachments 
-                                 if att['password_hint'])
-                        if hints:
-                            st.info(f"Password hints found in emails: {', '.join(hints)}")
-                        
-                        keyword_configs[keyword] = {
-                            'password': st.text_input(
-                                "PDF Password (if required)",
-                                value="",
-                                help="Enter the password for password-protected PDFs matching this keyword",
-                                key=f"pwd_{keyword}"
-                            ),
-                            'content_naming': st.text_input(
-                                "Content Match File Naming (optional)",
-                                value="",
-                                help="Enter a custom naming scheme for content matches (e.g., 'content_{date}'). Leave empty to use default.",
-                                key=f"naming_{keyword}"
-                            ) if selected_content_attachments else None
-                        }
-                
-                if st.button("Process Selected Files"):
-                    with st.spinner("Processing files..."):
-                        try:
-                            # Create/check main folder
-                            main_folder_id = st.session_state.drive_handler.check_folder_exists(main_folder)
+            if main_folder and st.button("Process Selected Files"):
+                with st.spinner("Processing files..."):
+                    try:
+                        # Create main folder
+                        main_folder_id = st.session_state.drive_handler.check_folder_exists(main_folder)
+                        if not main_folder_id:
+                            main_folder_id = st.session_state.drive_handler.create_folder(main_folder)
                             if not main_folder_id:
-                                main_folder_id = st.session_state.drive_handler.create_folder(main_folder)
-                                if not main_folder_id:
-                                    st.error("Failed to create main folder in Google Drive")
-                                    return
-                            
-                            # Track results for each keyword
-                            results_by_keyword = {}
-                            processed_files = set()  # Track processed files across all keywords
-                            
-                            # Process exact matches first
-                            for keyword in keywords:
-                                if selected_attachments:  # Only process if there are exact matches
-                                    success_count, password_required, processed_files, processed_filenames, folder_name = process_keyword_batch(
-                                        keyword,
-                                        selected_attachments,
-                                        main_folder_id,
-                                        keyword_configs[keyword]['password'],
-                                        processed_files
-                                    )
-                                    
-                                    # Store results
-                                    results_by_keyword[keyword] = {
-                                        'success_count': success_count,
-                                        'password_required': password_required,
-                                        'folder_name': folder_name,
-                                        'processed_files': processed_filenames
-                                    }
-                            
-                            # Then process content matches by group
-                            for pattern, group_key in content_match_groups.items():
-                                pattern_attachments = [
-                                    att for att in selected_content_attachments 
-                                    if att['pattern'] == pattern
-                                ]
+                                st.error("Failed to create main folder in Google Drive")
+                                return
+                        
+                        results_by_group = {}
+                        processed_files = set()
+                        
+                        # Process exact matches by keyword
+                        for keyword in exact_matches_by_keyword:
+                            keyword_attachments = [att for att in selected_exact_attachments if att['subject'].lower().find(keyword.lower()) != -1]
+                            if keyword_attachments:
+                                folder_name = f"{keyword}_exact_matches"
+                                success_count, password_required, processed_files, processed_filenames = process_pdf_batch(
+                                    keyword_attachments,
+                                    main_folder_id,
+                                    folder_name,
+                                    processed_files=processed_files
+                                )
                                 
-                                if pattern_attachments:  # Only process if files are selected
-                                    for keyword in keywords:
-                                        success_count, password_required, processed_files, processed_filenames, folder_name = process_keyword_batch(
-                                            f"{keyword}_content_{pattern}",
-                                            pattern_attachments,
-                                            main_folder_id,
-                                            keyword_configs[keyword]['password'],
-                                            processed_files
-                                        )
-                                        
-                                        # Store results
-                                        results_by_keyword[f"{keyword} - {pattern}"] = {
-                                            'success_count': success_count,
-                                            'password_required': password_required,
-                                            'folder_name': folder_name,
-                                            'processed_files': processed_filenames
-                                        }
-                            
-                            # Show detailed results
-                            show_processing_results(results_by_keyword)
-
-                        except Exception as e:
-                            logger.error(f"Error in batch processing: {str(e)}")
-                            st.error("An error occurred during processing")
+                                results_by_group[folder_name] = {
+                                    'success_count': success_count,
+                                    'password_required': password_required,
+                                    'processed_files': processed_filenames
+                                }
+                        
+                        # Process content matches by sender
+                        for sender in content_matches_by_sender:
+                            sender_attachments = [att for att in selected_content_attachments if att['sender_email'] == sender]
+                            if sender_attachments:
+                                folder_name = f"content_matches_{sender}"
+                                success_count, password_required, processed_files, processed_filenames = process_pdf_batch(
+                                    sender_attachments,
+                                    main_folder_id,
+                                    folder_name,
+                                    processed_files=processed_files
+                                )
+                                
+                                results_by_group[folder_name] = {
+                                    'success_count': success_count,
+                                    'password_required': password_required,
+                                    'processed_files': processed_filenames
+                                }
+                        
+                        # Show results
+                        show_processing_results(results_by_group)
+                        
+                    except Exception as e:
+                        logger.error(f"Error in batch processing: {str(e)}")
+                        st.error("An error occurred during processing")
 
 if __name__ == "__main__":
     main() 
