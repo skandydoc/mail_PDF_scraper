@@ -8,9 +8,9 @@ import pickle
 from typing import List, Dict, Any
 import logging
 import webbrowser
+from datetime import datetime
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Get module logger
 logger = logging.getLogger(__name__)
 
 # Gmail API scopes
@@ -20,6 +20,7 @@ class GmailHandler:
     def __init__(self):
         self.creds = None
         self.service = None
+        logger.info("Gmail handler initialized")
 
     def _create_local_server_handler(self):
         """Create a custom success handler for OAuth flow"""
@@ -31,22 +32,44 @@ class GmailHandler:
                     window.onload = function() {
                         setTimeout(function() {
                             window.close();
+                            window.location.href = 'http://localhost:8501';
                         }, 1000);
                     }
                 </script>
                 <style>
-                    body { font-family: Arial, sans-serif; text-align: center; padding-top: 50px; }
-                    .success { color: #4CAF50; }
-                    .message { margin-top: 20px; }
+                    body { 
+                        font-family: Arial, sans-serif; 
+                        text-align: center; 
+                        padding-top: 50px;
+                        background-color: #f0f2f6;
+                    }
+                    .success { 
+                        color: #4CAF50;
+                        margin-bottom: 20px;
+                    }
+                    .message { 
+                        margin-top: 20px;
+                        color: #666;
+                    }
+                    .container {
+                        background: white;
+                        padding: 30px;
+                        border-radius: 10px;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                        max-width: 400px;
+                        margin: 0 auto;
+                    }
                 </style>
             </head>
             <body>
-                <h2 class="success">✓ Authentication Successful!</h2>
-                <p class="message">This window will close automatically...</p>
+                <div class="container">
+                    <h2 class="success">✓ Authentication Successful!</h2>
+                    <p class="message">Redirecting back to application...</p>
+                </div>
             </body>
         </html>
         """
-        return lambda x: success_html
+        return success_html
 
     def authenticate(self) -> bool:
         """
@@ -55,6 +78,8 @@ class GmailHandler:
             bool: True if authentication successful, False otherwise
         """
         try:
+            logger.info("Starting authentication process")
+            
             if not os.path.exists('credentials.json'):
                 logger.error("credentials.json not found in project root directory")
                 raise FileNotFoundError(
@@ -63,32 +88,36 @@ class GmailHandler:
                 )
 
             if os.path.exists('token.pickle'):
+                logger.info("Found existing token.pickle file")
                 with open('token.pickle', 'rb') as token:
                     self.creds = pickle.load(token)
 
             if not self.creds or not self.creds.valid:
                 if self.creds and self.creds.expired and self.creds.refresh_token:
+                    logger.info("Refreshing expired credentials")
                     try:
                         self.creds.refresh(Request())
+                        logger.info("Credentials refreshed successfully")
                     except Exception as e:
                         logger.error(f"Error refreshing credentials: {str(e)}")
                         self.creds = None
                 
                 if not self.creds:
+                    logger.info("Starting OAuth flow")
                     try:
                         flow = InstalledAppFlow.from_client_secrets_file(
                             'credentials.json', 
-                            SCOPES,
-                            redirect_uri='http://localhost:0'
+                            SCOPES
                         )
                         
                         # Run the local server with custom success page
                         self.creds = flow.run_local_server(
                             port=0,
-                            success_message=None,
-                            authorization_prompt_message=None,
-                            success_handler=self._create_local_server_handler()
+                            success_message=self._create_local_server_handler(),
+                            authorization_prompt_message="",
+                            open_browser=True
                         )
+                        logger.info("OAuth flow completed successfully")
                         
                     except Exception as e:
                         logger.error(f"Error in OAuth flow: {str(e)}")
@@ -99,15 +128,18 @@ class GmailHandler:
 
                 # Save credentials for future use
                 try:
+                    logger.info("Saving credentials to token.pickle")
                     with open('token.pickle', 'wb') as token:
                         pickle.dump(self.creds, token)
                     # Set secure file permissions
                     os.chmod('token.pickle', 0o600)
+                    logger.info("Credentials saved successfully")
                 except Exception as e:
                     logger.warning(f"Could not save credentials: {str(e)}")
                     # Continue even if saving fails
 
             self.service = build('gmail', 'v1', credentials=self.creds)
+            logger.info("Gmail service initialized successfully")
             return True
 
         except FileNotFoundError as e:

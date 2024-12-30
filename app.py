@@ -4,14 +4,14 @@ from utils.gmail_handler import GmailHandler
 from utils.drive_handler import DriveHandler
 from utils.pdf_handler import PdfHandler
 from utils.hipaa_compliance import HipaaCompliance
+from utils.logger_config import setup_logger
 from dotenv import load_dotenv
 import logging
 from datetime import datetime
 import time
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Set up logging
+logger = setup_logger()
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +19,7 @@ load_dotenv()
 # Initialize session state
 if 'authentication_state' not in st.session_state:
     st.session_state.authentication_state = 'not_started'
+    logger.info("Initialized authentication state")
 if 'gmail_handler' not in st.session_state:
     st.session_state.gmail_handler = None
 if 'drive_handler' not in st.session_state:
@@ -33,6 +34,7 @@ if 'user_session' not in st.session_state:
 def initialize_handlers():
     """Initialize Gmail and Drive handlers with authentication"""
     try:
+        logger.info("Starting handler initialization")
         gmail_handler = GmailHandler()
         st.session_state.authentication_state = 'in_progress'
         
@@ -51,9 +53,11 @@ def initialize_handlers():
                 {'status': 'success', 'timestamp': datetime.utcnow().isoformat()}
             )
             
+            logger.info(f"Authentication successful for user: {user_info['emailAddress']}")
             st.session_state.authentication_state = 'completed'
             return True
             
+        logger.error("Authentication failed in handler initialization")
         st.session_state.authentication_state = 'failed'
         return False
     except Exception as e:
@@ -66,8 +70,11 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str):
     success_count = 0
     password_required = []
     
+    logger.info(f"Starting batch processing for keyword: {current_keyword}")
+    
     for attachment in attachments:
         try:
+            logger.info(f"Processing attachment: {attachment['filename']}")
             # Download
             file_data = st.session_state.gmail_handler.download_attachment(
                 attachment['message_id'],
@@ -82,6 +89,7 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str):
                 )
                 
                 if needs_password:
+                    logger.info(f"Password required for: {attachment['filename']}")
                     password_required.append(attachment)
                     continue
                 
@@ -95,6 +103,7 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str):
                     folder_id
                 ):
                     success_count += 1
+                    logger.info(f"Successfully processed and uploaded: {attachment['filename']}")
                     
                     # Log successful upload
                     st.session_state.hipaa.log_activity(
@@ -111,9 +120,11 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str):
             logger.error(f"Error processing attachment {attachment['filename']}: {str(e)}")
             continue
             
+    logger.info(f"Batch processing completed. Success: {success_count}, Password Required: {len(password_required)}")
     return success_count, password_required
 
 def main():
+    logger.info("Application started")
     st.title("Secure Gmail PDF Attachment Scraper")
     st.write("HIPAA-compliant tool for downloading PDF attachments from Gmail")
 
