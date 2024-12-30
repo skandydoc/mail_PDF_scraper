@@ -65,15 +65,29 @@ class GmailHandler:
                         # Run the local server with a simple success message
                         self.creds = flow.run_local_server(
                             port=0,  # Let the OS choose an available port
-                            authorization_prompt_message='Please complete authentication in your browser.',
-                            success_message="""
-                            <script>window.close();</script>
-                            Authentication successful! You may close this window.
-                            """,
+                            authorization_prompt_message='',
+                            success_message='Authentication successful! Please return to the application.',
                             open_browser=True
                         )
                         
                         logger.info("OAuth flow completed successfully")
+                        
+                        # Save credentials immediately after successful authentication
+                        try:
+                            logger.info("Saving credentials to token.pickle")
+                            with open('token.pickle', 'wb') as token:
+                                pickle.dump(self.creds, token)
+                            # Set secure file permissions
+                            os.chmod('token.pickle', 0o600)
+                            logger.info("Credentials saved successfully")
+                        except Exception as e:
+                            logger.warning(f"Could not save credentials: {str(e)}")
+                            # Continue even if saving fails
+                        
+                        # Initialize service immediately
+                        self.service = build('gmail', 'v1', credentials=self.creds)
+                        logger.info("Gmail service initialized successfully")
+                        return True
                         
                     except Exception as e:
                         logger.error(f"Error in OAuth flow: {str(e)}")
@@ -81,18 +95,6 @@ class GmailHandler:
                             "Authentication failed. Please ensure you have enabled the Gmail API "
                             "and configured the OAuth consent screen in Google Cloud Console."
                         )
-
-                # Save credentials for future use
-                try:
-                    logger.info("Saving credentials to token.pickle")
-                    with open('token.pickle', 'wb') as token:
-                        pickle.dump(self.creds, token)
-                    # Set secure file permissions
-                    os.chmod('token.pickle', 0o600)
-                    logger.info("Credentials saved successfully")
-                except Exception as e:
-                    logger.warning(f"Could not save credentials: {str(e)}")
-                    # Continue even if saving fails
 
             self.service = build('gmail', 'v1', credentials=self.creds)
             logger.info("Gmail service initialized successfully")

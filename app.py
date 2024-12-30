@@ -57,7 +57,7 @@ def initialize_handlers():
             
             logger.info(f"Authentication successful for user: {user_info['emailAddress']}")
             st.session_state.authentication_state = 'completed'
-            st.rerun()
+            st.experimental_rerun()
             return True
             
         logger.error("Authentication failed in handler initialization")
@@ -139,16 +139,16 @@ def main():
                 initialize_handlers()
         
         elif st.session_state.authentication_state == 'in_progress':
-            st.info("Authentication in progress... Please complete the authentication in the popup window.")
-            st.spinner("Waiting for authentication...")
-            time.sleep(1)
-            st.rerun()
+            st.info("Authentication in progress... Please complete the authentication in your browser.")
+            st.spinner("Waiting for authentication to complete...")
+            time.sleep(0.5)  # Short delay to prevent too frequent reruns
+            st.experimental_rerun()
         
         elif st.session_state.authentication_state == 'failed':
             st.error("Authentication failed. Please try again.")
             if st.button("Retry Authentication"):
                 st.session_state.authentication_state = 'not_started'
-                st.rerun()
+                st.experimental_rerun()
         
         return
 
