@@ -8,6 +8,7 @@ import pickle
 from typing import List, Dict, Any
 import logging
 from datetime import datetime
+import webbrowser
 
 # Get module logger
 logger = logging.getLogger(__name__)
@@ -55,18 +56,32 @@ class GmailHandler:
                 if not self.creds:
                     logger.info("Starting OAuth flow")
                     try:
+                        # Configure the OAuth flow for web application
                         flow = InstalledAppFlow.from_client_secrets_file(
                             'credentials.json', 
-                            SCOPES
+                            SCOPES,
+                            redirect_uri='http://localhost:8501'
                         )
                         
-                        # Run the local server with custom success page
-                        self.creds = flow.run_local_server(
-                            port=0,
-                            success_message='The authentication flow has completed. You can close this window and return to the application.',
-                            authorization_prompt_message=None,
-                            open_browser=True
+                        # Get the authorization URL
+                        auth_url, _ = flow.authorization_url(
+                            access_type='offline',
+                            include_granted_scopes='true',
+                            prompt='consent'
                         )
+                        
+                        # Open the authorization URL in the default browser
+                        webbrowser.open(auth_url)
+                        
+                        # Run the local server to handle the OAuth callback
+                        self.creds = flow.run_local_server(
+                            host='localhost',
+                            port=8501,
+                            authorization_prompt_message='',
+                            success_message='Authentication successful! You can now close this tab and return to the Streamlit app.',
+                            open_browser=False
+                        )
+                        
                         logger.info("OAuth flow completed successfully")
                         
                     except Exception as e:
