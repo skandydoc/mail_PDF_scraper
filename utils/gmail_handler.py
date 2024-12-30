@@ -9,12 +9,24 @@ from typing import List, Dict, Any
 import logging
 from datetime import datetime
 import webbrowser
+import socket
 
 # Get module logger
 logger = logging.getLogger(__name__)
 
 # Gmail API scopes
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+
+def find_free_port(start=8502, end=8999):
+    """Find a free port in the given range"""
+    for port in range(start, end):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(('localhost', port))
+                return port
+            except OSError:
+                continue
+    raise RuntimeError("No free ports found in range")
 
 class GmailHandler:
     def __init__(self):
@@ -56,17 +68,22 @@ class GmailHandler:
                 if not self.creds:
                     logger.info("Starting OAuth flow")
                     try:
-                        # Configure the OAuth flow for web application
+                        # Find a free port for OAuth callback
+                        oauth_port = find_free_port()
+                        logger.info(f"Using port {oauth_port} for OAuth callback")
+                        
+                        # Configure the OAuth flow
                         flow = InstalledAppFlow.from_client_secrets_file(
                             'credentials.json', 
                             SCOPES,
-                            redirect_uri='http://localhost:8501'
+                            redirect_uri=f'http://localhost:{oauth_port}'
                         )
                         
-                        # Get the authorization URL
-                        auth_url, _ = flow.authorization_url(
+                        # Get the authorization URL with state parameter
+                        auth_url, state = flow.authorization_url(
                             access_type='offline',
                             include_granted_scopes='true',
+                            state=str(oauth_port),
                             prompt='consent'
                         )
                         
@@ -76,10 +93,25 @@ class GmailHandler:
                         # Run the local server to handle the OAuth callback
                         self.creds = flow.run_local_server(
                             host='localhost',
-                            port=8501,
+                            port=oauth_port,
                             authorization_prompt_message='',
-                            success_message='Authentication successful! You can now close this tab and return to the Streamlit app.',
-                            open_browser=False
+                            success_message="""
+                            <html>
+                                <head>
+                                    <script>
+                                        window.onload = function() {
+                                            window.close();
+                                        }
+                                    </script>
+                                </head>
+                                <body>
+                                    <h1>Authentication Successful!</h1>
+                                    <p>You can close this window and return to the application.</p>
+                                </body>
+                            </html>
+                            """,
+                            open_browser=False,
+                            timeout_seconds=120
                         )
                         
                         logger.info("OAuth flow completed successfully")
