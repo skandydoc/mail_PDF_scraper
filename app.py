@@ -417,6 +417,11 @@ def main():
         st.session_state.pdf_handler.clear_password_cache()
         st.session_state.last_keywords = keywords
 
+    # Initialize variables
+    exact_attachments = []
+    content_attachments = []
+    content_match_groups = {}
+
     # Search Emails
     if st.button("Search Emails"):
         with st.spinner("Searching emails..."):
@@ -487,9 +492,17 @@ def main():
             if 'selected_content_attachments' not in st.session_state:
                 st.session_state.selected_content_attachments = set()
             
-            # Create a list of all content attachments with their email info
+            # Create a list of all content attachments with their email info and group them
             content_attachments = []
+            content_match_groups = {}
+            
             for email in content_matches:
+                pattern = email['subject'].split()[0]  # Use first word as pattern
+                if pattern not in content_match_groups:
+                    content_match_groups[pattern] = f"selected_content_attachments_{pattern}"
+                    if content_match_groups[pattern] not in st.session_state:
+                        st.session_state[content_match_groups[pattern]] = set()
+                
                 for attachment in email['attachments']:
                     content_attachments.append({
                         'subject': email['subject'],
@@ -501,22 +514,36 @@ def main():
                         'message_id': email['id'],
                         'attachment_id': attachment['id'],
                         'email_date': format_file_date(email['date']),
-                        'password_hint': email.get('password_hint', '')
+                        'password_hint': email.get('password_hint', ''),
+                        'pattern': pattern
                     })
             
-            # Select all / Deselect all buttons for content matches
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Select All Content Matches"):
-                    st.session_state.selected_content_attachments = {att['id'] for att in content_attachments}
-                    st.rerun()
-            with col2:
-                if st.button("Deselect All Content Matches"):
-                    st.session_state.selected_content_attachments = set()
-                    st.rerun()
-            
-            # Display content matches table
-            edited_df_content = display_results_table(content_attachments, "content_matches", "selected_content_attachments")
+            # Display content matches by group
+            for pattern in content_match_groups:
+                st.subheader(f"Content Matches - {pattern}")
+                
+                # Filter attachments for this pattern
+                pattern_attachments = [att for att in content_attachments if att['pattern'] == pattern]
+                
+                # Select all / Deselect all buttons for this pattern
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"Select All - {pattern}"):
+                        st.session_state[content_match_groups[pattern]] = {
+                            att['id'] for att in pattern_attachments
+                        }
+                        st.rerun()
+                with col2:
+                    if st.button(f"Deselect All - {pattern}"):
+                        st.session_state[content_match_groups[pattern]] = set()
+                        st.rerun()
+                
+                # Display pattern matches table
+                edited_df = display_results_table(
+                    pattern_attachments,
+                    f"content_matches_{pattern}",
+                    content_match_groups[pattern]
+                )
         
         # Get selected attachments details
         selected_attachments = [
@@ -529,7 +556,7 @@ def main():
             }
             for att in exact_attachments
             if att['id'] in st.session_state.selected_attachments
-        ]
+        ] if exact_attachments else []
         
         selected_content_attachments = [
             {
@@ -537,11 +564,13 @@ def main():
                 'attachment_id': att['attachment_id'],
                 'filename': att['filename'],
                 'email_date': att['email_date'],
-                'password_hint': att['password_hint']
+                'password_hint': att['password_hint'],
+                'pattern': att['pattern']
             }
             for att in content_attachments
-            if att['id'] in st.session_state.selected_content_attachments
-        ]
+            if any(att['id'] in st.session_state[group_key] 
+                  for pattern, group_key in content_match_groups.items())
+        ] if content_attachments else []
 
         if selected_attachments or selected_content_attachments:
             st.subheader("Upload to Google Drive")
@@ -615,16 +644,16 @@ def main():
                             
                             # Then process content matches by group
                             for pattern, group_key in content_match_groups.items():
-                                if st.session_state.get(group_key):  # Only process if files are selected
-                                    group_attachments = [
-                                        att for att in content_attachments 
-                                        if att['id'] in st.session_state[group_key]
-                                    ]
-                                    
+                                pattern_attachments = [
+                                    att for att in selected_content_attachments 
+                                    if att['pattern'] == pattern
+                                ]
+                                
+                                if pattern_attachments:  # Only process if files are selected
                                     for keyword in keywords:
                                         success_count, password_required, processed_files, processed_filenames, folder_name = process_keyword_batch(
                                             f"{keyword}_content_{pattern}",
-                                            group_attachments,
+                                            pattern_attachments,
                                             main_folder_id,
                                             keyword_configs[keyword]['password'],
                                             processed_files
