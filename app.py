@@ -55,12 +55,15 @@ def initialize_handlers():
             )
             
             logger.info(f"Authentication successful for user: {user_info['emailAddress']}")
+            st.session_state.auth_completed = True
             return True
             
         logger.error("Authentication failed in handler initialization")
+        st.session_state.auth_completed = False
         return False
     except Exception as e:
         logger.error(f"Error initializing handlers: {str(e)}")
+        st.session_state.auth_completed = False
         return False
 
 def process_pdf_batch(attachments, folder_id: str, current_keyword: str):
@@ -126,16 +129,25 @@ def main():
     st.title("Secure Gmail PDF Attachment Scraper")
     st.write("HIPAA-compliant tool for downloading PDF attachments from Gmail")
 
+    # Initialize session state for auth completion
+    if 'auth_completed' not in st.session_state:
+        st.session_state.auth_completed = False
+
     # Authentication
     if 'gmail_handler' not in st.session_state or not st.session_state.gmail_handler:
-        st.warning("Please authenticate with Google to continue")
-        if st.button("Authenticate"):
-            with st.spinner("Authenticating with Google..."):
-                if initialize_handlers():
-                    st.success("Authentication successful!")
-                    st.rerun()
-                else:
-                    st.error("Authentication failed. Please try again.")
+        auth_placeholder = st.empty()
+        
+        if not st.session_state.auth_completed:
+            auth_placeholder.warning("Please authenticate with Google to continue")
+            if auth_placeholder.button("Authenticate", key="auth_button"):
+                auth_placeholder.empty()
+                with st.spinner("Authenticating with Google..."):
+                    if initialize_handlers():
+                        st.success("Authentication successful!")
+                        time.sleep(1)  # Brief pause to show success message
+                        st.rerun()
+                    else:
+                        st.error("Authentication failed. Please try again.")
         return
 
     # Search Parameters
