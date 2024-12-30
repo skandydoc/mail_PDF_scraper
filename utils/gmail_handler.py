@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 import webbrowser
 import socket
+import secrets
 
 # Get module logger
 logger = logging.getLogger(__name__)
@@ -72,6 +73,10 @@ class GmailHandler:
                         oauth_port = find_free_port()
                         logger.info(f"Using port {oauth_port} for OAuth callback")
                         
+                        # Generate a secure state token
+                        state = secrets.token_urlsafe(32)
+                        logger.info("Generated secure state token")
+                        
                         # Configure the OAuth flow
                         flow = InstalledAppFlow.from_client_secrets_file(
                             'credentials.json', 
@@ -79,39 +84,88 @@ class GmailHandler:
                             redirect_uri=f'http://localhost:{oauth_port}'
                         )
                         
-                        # Get the authorization URL with state parameter
-                        auth_url, state = flow.authorization_url(
+                        # Get the authorization URL
+                        auth_url, _ = flow.authorization_url(
                             access_type='offline',
                             include_granted_scopes='true',
-                            state=str(oauth_port),
+                            state=state,
                             prompt='consent'
                         )
                         
                         # Open the authorization URL in the default browser
                         webbrowser.open(auth_url)
                         
+                        success_html = """
+                        <html>
+                            <head>
+                                <title>Authentication Successful</title>
+                                <style>
+                                    body {
+                                        font-family: Arial, sans-serif;
+                                        display: flex;
+                                        justify-content: center;
+                                        align-items: center;
+                                        height: 100vh;
+                                        margin: 0;
+                                        background-color: #f5f5f5;
+                                    }
+                                    .container {
+                                        text-align: center;
+                                        padding: 2rem;
+                                        background: white;
+                                        border-radius: 8px;
+                                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                    }
+                                    h1 { color: #4CAF50; margin-bottom: 1rem; }
+                                    p { color: #666; margin-bottom: 1.5rem; }
+                                    .spinner {
+                                        border: 4px solid #f3f3f3;
+                                        border-top: 4px solid #4CAF50;
+                                        border-radius: 50%;
+                                        width: 40px;
+                                        height: 40px;
+                                        animation: spin 1s linear infinite;
+                                        margin: 1rem auto;
+                                    }
+                                    @keyframes spin {
+                                        0% { transform: rotate(0deg); }
+                                        100% { transform: rotate(360deg); }
+                                    }
+                                </style>
+                                <script>
+                                    function closeWindow() {
+                                        if (window.opener) {
+                                            window.opener.postMessage('oauth-complete', '*');
+                                        }
+                                        setTimeout(function() {
+                                            window.close();
+                                            if (!window.closed) {
+                                                window.location.href = 'http://localhost:8501';
+                                            }
+                                        }, 2000);
+                                    }
+                                    window.onload = closeWindow;
+                                </script>
+                            </head>
+                            <body>
+                                <div class="container">
+                                    <h1>Authentication Successful!</h1>
+                                    <div class="spinner"></div>
+                                    <p>This window will close automatically in 2 seconds...</p>
+                                </div>
+                            </body>
+                        </html>
+                        """
+                        
                         # Run the local server to handle the OAuth callback
                         self.creds = flow.run_local_server(
                             host='localhost',
                             port=oauth_port,
                             authorization_prompt_message='',
-                            success_message="""
-                            <html>
-                                <head>
-                                    <script>
-                                        window.onload = function() {
-                                            window.close();
-                                        }
-                                    </script>
-                                </head>
-                                <body>
-                                    <h1>Authentication Successful!</h1>
-                                    <p>You can close this window and return to the application.</p>
-                                </body>
-                            </html>
-                            """,
+                            success_message=success_html,
                             open_browser=False,
-                            timeout_seconds=120
+                            timeout_seconds=120,
+                            state=state
                         )
                         
                         logger.info("OAuth flow completed successfully")
