@@ -182,6 +182,34 @@ def initialize_handlers():
         st.session_state.auth_error = error_msg
         return False
 
+def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, password: str = None):
+    """Process a batch of attachments for a specific keyword"""
+    try:
+        # Create subfolder for keyword
+        keyword_folder_name = f"{keyword.strip()}_files"
+        keyword_folder_id = st.session_state.drive_handler.create_folder(
+            keyword_folder_name, 
+            parent_folder_id
+        )
+        
+        if not keyword_folder_id:
+            st.error(f"Failed to create folder for keyword: {keyword}")
+            return 0, []
+            
+        # Process files
+        success_count, password_required = process_pdf_batch(
+            attachments,
+            keyword_folder_id,
+            keyword,
+            password
+        )
+        
+        return success_count, password_required
+        
+    except Exception as e:
+        logger.error(f"Error processing keyword batch {keyword}: {str(e)}")
+        return 0, []
+
 def main():
     logger.info("Application started")
     st.title("Secure Gmail PDF Attachment Scraper")
@@ -292,58 +320,94 @@ def main():
         if selected_attachments:
             st.subheader("Upload to Google Drive")
             
-            # Password input for PDF files
-            st.session_state.pdf_password = st.text_input(
-                "PDF Password (if required)",
-                value=st.session_state.pdf_password or "",
-                help="Enter the password for password-protected PDFs. Leave empty if files are not password-protected."
+            # Main folder input
+            main_folder = st.text_input(
+                "Enter main Google Drive folder name",
+                help="Enter the name of the main folder where all keyword-specific folders will be created"
             )
             
-            folder_name = st.text_input(
-                "Enter Google Drive folder name",
-                help="Enter the name of the folder where files will be uploaded. A new folder will be created if it doesn't exist."
-            )
-
-            if folder_name and st.button("Process Selected Files"):
-                with st.spinner("Processing files..."):
-                    try:
-                        # Check/Create folder
-                        folder_id = st.session_state.drive_handler.check_folder_exists(folder_name)
-                        if not folder_id:
-                            folder_id = st.session_state.drive_handler.create_folder(folder_name)
-                            if not folder_id:
-                                st.error("Failed to create folder in Google Drive")
-                                return
-
-                        # Process files with password if provided
-                        success_count = 0
-                        password_required_files = []
-                        
-                        for keyword in keywords:
-                            batch_success, batch_password_required = process_pdf_batch(
-                                selected_attachments,
-                                folder_id,
-                                keyword,
-                                st.session_state.pdf_password
+            if main_folder:
+                # Create expandable sections for each keyword
+                keyword_configs = {}
+                
+                for keyword in keywords:
+                    with st.expander(f"Settings for keyword: {keyword}", expanded=True):
+                        keyword_configs[keyword] = {
+                            'password': st.text_input(
+                                "PDF Password (if required)",
+                                value="",
+                                help="Enter the password for password-protected PDFs matching this keyword",
+                                key=f"pwd_{keyword}"
                             )
-                            success_count += batch_success
-                            password_required_files.extend(batch_password_required)
-                        
-                        # Show results
-                        if success_count > 0:
-                            st.success(f"Successfully processed {success_count} files")
-                        
-                        if password_required_files:
-                            st.warning(
-                                f"{len(password_required_files)} files require a password or the provided password was incorrect. "
-                                "Please enter the correct password above and try again."
-                            )
-                        elif success_count == 0:
-                            st.error("Failed to process any files")
+                        }
+                
+                if st.button("Process Selected Files"):
+                    with st.spinner("Processing files..."):
+                        try:
+                            # Create/check main folder
+                            main_folder_id = st.session_state.drive_handler.check_folder_exists(main_folder)
+                            if not main_folder_id:
+                                main_folder_id = st.session_state.drive_handler.create_folder(main_folder)
+                                if not main_folder_id:
+                                    st.error("Failed to create main folder in Google Drive")
+                                    return
+                            
+                            # Process each keyword
+                            total_success = 0
+                            all_password_required = []
+                            processed_files = set()  # Track processed files to avoid duplicates
+                            
+                            for keyword in keywords:
+                                # Filter attachments that haven't been processed yet
+                                remaining_attachments = [
+                                    att for att in selected_attachments 
+                                    if f"{att['message_id']}_{att['attachment_id']}" not in processed_files
+                                ]
+                                
+                                if not remaining_attachments:
+                                    continue
+                                    
+                                success_count, password_required = process_keyword_batch(
+                                    keyword,
+                                    remaining_attachments,
+                                    main_folder_id,
+                                    keyword_configs[keyword]['password']
+                                )
+                                
+                                # Update tracking
+                                total_success += success_count
+                                all_password_required.extend(password_required)
+                                
+                                # Mark files as processed
+                                for att in remaining_attachments:
+                                    processed_files.add(f"{att['message_id']}_{att['attachment_id']}")
+                            
+                            # Show results
+                            if total_success > 0:
+                                st.success(f"Successfully processed {total_success} files")
+                            
+                            if all_password_required:
+                                # Group password-required files by keyword
+                                password_files_by_keyword = {}
+                                for file in all_password_required:
+                                    keyword = next(k for k in keywords if k in file['filename'])
+                                    if keyword not in password_files_by_keyword:
+                                        password_files_by_keyword[keyword] = []
+                                    password_files_by_keyword[keyword].append(file['filename'])
+                                
+                                # Show password requirements by keyword
+                                for keyword, files in password_files_by_keyword.items():
+                                    st.warning(
+                                        f"For keyword '{keyword}': {len(files)} files require a password or the provided "
+                                        f"password was incorrect. Please check the password in the keyword settings above."
+                                    )
+                            
+                            elif total_success == 0:
+                                st.error("Failed to process any files")
 
-                    except Exception as e:
-                        logger.error(f"Error in batch processing: {str(e)}")
-                        st.error("An error occurred during processing")
+                        except Exception as e:
+                            logger.error(f"Error in batch processing: {str(e)}")
+                            st.error("An error occurred during processing")
 
 if __name__ == "__main__":
     main() 

@@ -18,14 +18,14 @@ class DriveHandler:
         """
         self.service = build('drive', 'v3', credentials=credentials)
 
-    def create_folder(self, folder_name: str, parent_id: Optional[str] = None) -> Optional[str]:
+    def create_folder(self, folder_name: str, parent_folder_id: str = None) -> str:
         """
         Create a folder in Google Drive
         Args:
             folder_name: Name of the folder to create
-            parent_id: Optional parent folder ID
+            parent_folder_id: Optional ID of parent folder
         Returns:
-            Folder ID if successful, None otherwise
+            str: Folder ID if successful, None otherwise
         """
         try:
             file_metadata = {
@@ -33,15 +33,17 @@ class DriveHandler:
                 'mimeType': 'application/vnd.google-apps.folder'
             }
             
-            if parent_id:
-                file_metadata['parents'] = [parent_id]
-
+            # Add parent folder if specified
+            if parent_folder_id:
+                file_metadata['parents'] = [parent_folder_id]
+            
             folder = self.service.files().create(
                 body=file_metadata,
                 fields='id'
             ).execute()
-
+            
             return folder.get('id')
+            
         except Exception as e:
             logger.error(f"Error creating folder: {str(e)}")
             return None
