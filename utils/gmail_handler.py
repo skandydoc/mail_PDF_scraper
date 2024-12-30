@@ -13,7 +13,10 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 # Gmail API scopes
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/drive.file'  # For file uploads
+]
 
 class GmailHandler:
     def __init__(self):

@@ -191,22 +191,76 @@ def main():
     if 'search_results' in st.session_state:
         st.subheader("Search Results")
         
-        selected_attachments = []
+        # Initialize selected attachments in session state if not present
+        if 'selected_attachments' not in st.session_state:
+            st.session_state.selected_attachments = set()
+        
+        # Create a list of all attachments with their email info
+        all_attachments = []
         for email in st.session_state.search_results:
-            with st.expander(f"Email: {email['subject']}"):
-                st.write(f"From: {email['sender']}")
-                st.write(f"Date: {email['date']}")
-                
-                for attachment in email['attachments']:
-                    if st.checkbox(
-                        f"Select: {attachment['filename']} ({attachment['size']} bytes)",
-                        key=f"{email['id']}_{attachment['id']}"
-                    ):
-                        selected_attachments.append({
-                            'message_id': email['id'],
-                            'attachment_id': attachment['id'],
-                            'filename': attachment['filename']
-                        })
+            for attachment in email['attachments']:
+                all_attachments.append({
+                    'subject': email['subject'],
+                    'sender': email['sender'],
+                    'date': datetime.fromtimestamp(int(email['date'])/1000).strftime('%Y-%m-%d %H:%M'),
+                    'filename': attachment['filename'],
+                    'size': f"{attachment['size']/1024:.1f} KB",
+                    'id': f"{email['id']}_{attachment['id']}",
+                    'message_id': email['id'],
+                    'attachment_id': attachment['id']
+                })
+        
+        # Select all / Deselect all buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Select All"):
+                st.session_state.selected_attachments = {att['id'] for att in all_attachments}
+                st.rerun()
+        with col2:
+            if st.button("Deselect All"):
+                st.session_state.selected_attachments = set()
+                st.rerun()
+        
+        # Create DataFrame for display
+        df_display = []
+        for att in all_attachments:
+            selected = att['id'] in st.session_state.selected_attachments
+            if st.checkbox(
+                "Select",
+                value=selected,
+                key=f"select_{att['id']}",
+                help=f"Select {att['filename']}"
+            ):
+                st.session_state.selected_attachments.add(att['id'])
+            else:
+                st.session_state.selected_attachments.discard(att['id'])
+            
+            df_display.append({
+                'Subject': att['subject'],
+                'Sender': att['sender'],
+                'Date': att['date'],
+                'Filename': att['filename'],
+                'Size': att['size']
+            })
+        
+        # Display results table
+        if df_display:
+            st.dataframe(
+                df_display,
+                hide_index=True,
+                use_container_width=True
+            )
+        
+        # Get selected attachments details
+        selected_attachments = [
+            {
+                'message_id': att['message_id'],
+                'attachment_id': att['attachment_id'],
+                'filename': att['filename']
+            }
+            for att in all_attachments
+            if att['id'] in st.session_state.selected_attachments
+        ]
 
         if selected_attachments:
             st.subheader("Upload to Google Drive")
