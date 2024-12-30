@@ -3,7 +3,7 @@ import os
 from utils.gmail_handler import GmailHandler
 from utils.drive_handler import DriveHandler
 from utils.pdf_handler import PdfHandler
-from utils.hipaa_compliance import HipaaCompliance
+from utils.security import SecurityHandler
 from utils.logger_config import setup_logger
 from dotenv import load_dotenv
 import logging
@@ -30,12 +30,10 @@ if 'drive_handler' not in st.session_state:
     st.session_state.drive_handler = None
 if 'pdf_handler' not in st.session_state:
     st.session_state.pdf_handler = PdfHandler()
-if 'hipaa' not in st.session_state:
-    st.session_state.hipaa = HipaaCompliance()
+if 'security' not in st.session_state:
+    st.session_state.security = SecurityHandler()
 if 'user_session' not in st.session_state:
     st.session_state.user_session = None
-if 'pdf_password' not in st.session_state:
-    st.session_state.pdf_password = None
 
 # Get IST timezone
 ist = pytz.timezone('Asia/Kolkata')
@@ -45,6 +43,17 @@ def format_ist_time(timestamp):
     dt = datetime.fromtimestamp(int(timestamp)/1000, tz=pytz.UTC)
     ist_time = dt.astimezone(ist)
     return ist_time.strftime('%Y-%m-%d %H:%M IST')
+
+def format_file_date(timestamp):
+    """Format date for file naming"""
+    dt = datetime.fromtimestamp(int(timestamp)/1000, tz=pytz.UTC)
+    ist_time = dt.astimezone(ist)
+    return ist_time.strftime('%d %B %Y')
+
+def get_file_name(original_name: str, email_date: str) -> str:
+    """Generate file name based on email date"""
+    extension = original_name.split('.')[-1] if '.' in original_name else 'pdf'
+    return f"{email_date}.{extension}"
 
 def process_pdf_batch(attachments, folder_id: str, current_keyword: str, password: str = None):
     """Process a batch of PDF attachments"""
@@ -75,25 +84,25 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str, passwor
                     password_required.append(attachment)
                     continue
                 
-                # Verify data integrity
-                file_hash = st.session_state.hipaa.verify_data_integrity(processed_data)
+                # Generate new filename based on email date
+                new_filename = get_file_name(attachment['filename'], attachment['email_date'])
                 
-                # Upload to Drive
+                # Upload to Drive with new filename
                 if st.session_state.drive_handler.upload_file(
                     processed_data,
-                    attachment['filename'],
+                    new_filename,
                     folder_id
                 ):
                     success_count += 1
-                    logger.info(f"Successfully processed and uploaded: {attachment['filename']}")
+                    logger.info(f"Successfully processed and uploaded: {new_filename}")
                     
                     # Log successful upload
-                    st.session_state.hipaa.log_activity(
+                    st.session_state.security.log_activity(
                         st.session_state.gmail_handler.service.users().getProfile(userId='me').execute()['emailAddress'],
                         'file_upload',
                         {
-                            'filename': attachment['filename'],
-                            'hash': file_hash,
+                            'filename': new_filename,
+                            'original_name': attachment['filename'],
                             'timestamp': datetime.now(ist).isoformat()
                         }
                     )
@@ -104,83 +113,6 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str, passwor
             
     logger.info(f"Batch processing completed. Success: {success_count}, Password Required: {len(password_required)}")
     return success_count, password_required
-
-def display_results_table(all_attachments):
-    """Display results in a table with integrated selection"""
-    # Create DataFrame for display
-    df_data = []
-    for att in all_attachments:
-        selected = att['id'] in st.session_state.selected_attachments
-        df_data.append({
-            'Select': selected,
-            'Subject': att['subject'],
-            'Sender': att['sender'],
-            'Date': att['date'],
-            'Filename': att['filename'],
-            'Size': att['size']
-        })
-    
-    # Display table with selection column
-    edited_df = st.data_editor(
-        df_data,
-        column_config={
-            "Select": st.column_config.CheckboxColumn(
-                "Select",
-                help="Select files to process",
-                default=False,
-            )
-        },
-        hide_index=True,
-        use_container_width=True,
-        key="results_table"
-    )
-    
-    # Update selected attachments based on table selection
-    st.session_state.selected_attachments = {
-        att['id'] for att, row in zip(all_attachments, edited_df)
-        if row['Select']
-    }
-    
-    return edited_df
-
-def initialize_handlers():
-    """Initialize Gmail and Drive handlers with authentication"""
-    try:
-        logger.info("Starting handler initialization")
-        gmail_handler = GmailHandler()
-        
-        auth_success = gmail_handler.authenticate()
-        
-        if auth_success:
-            st.session_state.gmail_handler = gmail_handler
-            st.session_state.drive_handler = DriveHandler(gmail_handler.creds)
-            
-            # Create HIPAA-compliant session
-            user_info = gmail_handler.service.users().getProfile(userId='me').execute()
-            st.session_state.user_session = st.session_state.hipaa.create_session(user_info['emailAddress'])
-            
-            # Log successful authentication
-            st.session_state.hipaa.log_activity(
-                user_info['emailAddress'],
-                'authentication',
-                {'status': 'success', 'timestamp': datetime.utcnow().isoformat()}
-            )
-            
-            logger.info(f"Authentication successful for user: {user_info['emailAddress']}")
-            st.session_state.auth_completed = True
-            st.session_state.auth_error = None
-            return True
-            
-        logger.error("Authentication failed in handler initialization")
-        st.session_state.auth_completed = False
-        st.session_state.auth_error = "Authentication failed. Please try again."
-        return False
-    except Exception as e:
-        error_msg = str(e)
-        logger.error(f"Error initializing handlers: {error_msg}")
-        st.session_state.auth_completed = False
-        st.session_state.auth_error = error_msg
-        return False
 
 def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, password: str = None):
     """Process a batch of attachments for a specific keyword"""
@@ -212,8 +144,8 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
 
 def main():
     logger.info("Application started")
-    st.title("Secure Gmail PDF Attachment Scraper")
-    st.write("HIPAA-compliant tool for downloading PDF attachments from Gmail")
+    st.title("Secure Gmail PDF Attachment Processor")
+    st.write("Tool for downloading and organizing PDF attachments from Gmail")
 
     # Initialize session states
     if 'auth_completed' not in st.session_state:
@@ -289,7 +221,8 @@ def main():
                     'size': f"{attachment['size']/1024:.1f} KB",
                     'id': f"{email['id']}_{attachment['id']}",
                     'message_id': email['id'],
-                    'attachment_id': attachment['id']
+                    'attachment_id': attachment['id'],
+                    'email_date': format_file_date(email['date'])
                 })
         
         # Select all / Deselect all buttons
@@ -311,7 +244,8 @@ def main():
             {
                 'message_id': att['message_id'],
                 'attachment_id': att['attachment_id'],
-                'filename': att['filename']
+                'filename': att['filename'],
+                'email_date': att['email_date']
             }
             for att in all_attachments
             if att['id'] in st.session_state.selected_attachments
@@ -352,24 +286,14 @@ def main():
                                     st.error("Failed to create main folder in Google Drive")
                                     return
                             
-                            # Process each keyword
+                            # Process each keyword with all selected files
                             total_success = 0
                             all_password_required = []
-                            processed_files = set()  # Track processed files to avoid duplicates
                             
                             for keyword in keywords:
-                                # Filter attachments that haven't been processed yet
-                                remaining_attachments = [
-                                    att for att in selected_attachments 
-                                    if f"{att['message_id']}_{att['attachment_id']}" not in processed_files
-                                ]
-                                
-                                if not remaining_attachments:
-                                    continue
-                                    
                                 success_count, password_required = process_keyword_batch(
                                     keyword,
-                                    remaining_attachments,
+                                    selected_attachments,  # Pass all attachments for each keyword
                                     main_folder_id,
                                     keyword_configs[keyword]['password']
                                 )
@@ -377,10 +301,6 @@ def main():
                                 # Update tracking
                                 total_success += success_count
                                 all_password_required.extend(password_required)
-                                
-                                # Mark files as processed
-                                for att in remaining_attachments:
-                                    processed_files.add(f"{att['message_id']}_{att['attachment_id']}")
                             
                             # Show results
                             if total_success > 0:

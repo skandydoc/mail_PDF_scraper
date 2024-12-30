@@ -26,6 +26,8 @@ ENV/
 audit_logs/
 logs/
 
+audit_log_2024-12-30.json
+
 # IDE
 .idea/
 .vscode/
