@@ -162,6 +162,7 @@ class GmailHandler:
                     sender = ''
                     sender_email = ''
                     password_hint = ''
+                    email_body = ''
 
                     # Get email headers
                     for header in email_data['payload']['headers']:
@@ -182,6 +183,7 @@ class GmailHandler:
                             if part.get('mimeType') == 'text/plain':
                                 try:
                                     body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                                    email_body = body  # Store the entire email body
                                     # Look for common password hints
                                     hint_patterns = [
                                         r'password[:\s]+([^\n]+)',
@@ -191,12 +193,12 @@ class GmailHandler:
                                         r'password is[:\s]+([^\n]+)',
                                         r'pin is[:\s]+([^\n]+)',
                                         r'passcode is[:\s]+([^\n]+)',
-                                        # Add date of birth patterns
                                         r'dob[:\s]+([^\n]+)',
                                         r'date of birth[:\s]+([^\n]+)',
-                                        # Add last 4 digits patterns
                                         r'last \d digits[:\s]+([^\n]+)',
-                                        r'last four digits[:\s]+([^\n]+)'
+                                        r'last four digits[:\s]+([^\n]+)',
+                                        r'password format[:\s]+([^\n]+)',
+                                        r'format[:\s]+([^\n]+).*?(?:for password|as password)',
                                     ]
                                     for pattern in hint_patterns:
                                         match = re.search(pattern, body, re.IGNORECASE)
@@ -220,7 +222,8 @@ class GmailHandler:
                             'date': email_data['internalDate'],
                             'attachments': attachments,
                             'match_type': 'exact',
-                            'password_hint': password_hint
+                            'password_hint': password_hint,
+                            'email_body': email_body  # Include email body in results
                         })
 
                 except Exception as e:
@@ -241,6 +244,7 @@ class GmailHandler:
                     sender = ''
                     sender_email = ''
                     password_hint = ''
+                    email_body = ''
 
                     # Get email headers
                     for header in email_data['payload']['headers']:
@@ -261,6 +265,7 @@ class GmailHandler:
                             if part.get('mimeType') == 'text/plain':
                                 try:
                                     body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                                    email_body = body  # Store the entire email body
                                     # Look for common password hints
                                     hint_patterns = [
                                         r'password[:\s]+([^\n]+)',
@@ -270,12 +275,12 @@ class GmailHandler:
                                         r'password is[:\s]+([^\n]+)',
                                         r'pin is[:\s]+([^\n]+)',
                                         r'passcode is[:\s]+([^\n]+)',
-                                        # Add date of birth patterns
                                         r'dob[:\s]+([^\n]+)',
                                         r'date of birth[:\s]+([^\n]+)',
-                                        # Add last 4 digits patterns
                                         r'last \d digits[:\s]+([^\n]+)',
-                                        r'last four digits[:\s]+([^\n]+)'
+                                        r'last four digits[:\s]+([^\n]+)',
+                                        r'password format[:\s]+([^\n]+)',
+                                        r'format[:\s]+([^\n]+).*?(?:for password|as password)',
                                     ]
                                     for pattern in hint_patterns:
                                         match = re.search(pattern, body, re.IGNORECASE)
@@ -299,7 +304,8 @@ class GmailHandler:
                             'date': email_data['internalDate'],
                             'attachments': attachments,
                             'match_type': 'content',
-                            'password_hint': password_hint
+                            'password_hint': password_hint,
+                            'email_body': email_body  # Include email body in results
                         })
 
                 except Exception as e:
