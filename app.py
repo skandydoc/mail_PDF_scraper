@@ -181,12 +181,12 @@ def initialize_handlers():
         st.session_state.auth_error = error_msg
         return False
 
-def display_results_table(all_attachments):
+def display_results_table(all_attachments, table_name: str = "", selected_attachments_key: str = ""):
     """Display results in a table with integrated selection"""
     # Create DataFrame for display
     df_data = []
     for att in all_attachments:
-        selected = att['id'] in st.session_state.selected_attachments
+        selected = att['id'] in st.session_state[selected_attachments_key] if selected_attachments_key else False
         df_data.append({
             'Select': selected,
             'Subject': att['subject'],
@@ -208,11 +208,11 @@ def display_results_table(all_attachments):
         },
         hide_index=True,
         use_container_width=True,
-        key="results_table"
+        key=f"{table_name}_results_table"
     )
     
     # Update selected attachments based on table selection
-    st.session_state.selected_attachments = {
+    st.session_state[selected_attachments_key] = {
         att['id'] for att, row in zip(all_attachments, edited_df)
         if row['Select']
     }
@@ -321,41 +321,93 @@ def main():
 
     # Display Results and Select Attachments
     if 'search_results' in st.session_state:
-        st.subheader("Search Results")
+        # Separate exact and content matches
+        exact_matches = []
+        content_matches = []
         
-        # Initialize selected attachments in session state if not present
-        if 'selected_attachments' not in st.session_state:
-            st.session_state.selected_attachments = set()
-        
-        # Create a list of all attachments with their email info
-        all_attachments = []
         for email in st.session_state.search_results:
-            for attachment in email['attachments']:
-                all_attachments.append({
-                    'subject': email['subject'],
-                    'sender': email['sender'],
-                    'date': format_ist_time(email['date']),
-                    'filename': attachment['filename'],
-                    'size': f"{attachment['size']/1024:.1f} KB",
-                    'id': f"{email['id']}_{attachment['id']}",
-                    'message_id': email['id'],
-                    'attachment_id': attachment['id'],
-                    'email_date': format_file_date(email['date'])
-                })
+            if email['match_type'] == 'exact':
+                exact_matches.append(email)
+            else:
+                content_matches.append(email)
         
-        # Select all / Deselect all buttons
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Select All"):
-                st.session_state.selected_attachments = {att['id'] for att in all_attachments}
-                st.rerun()
-        with col2:
-            if st.button("Deselect All"):
+        # Display exact matches
+        if exact_matches:
+            st.subheader("Exact Matches")
+            
+            # Initialize selected attachments in session state if not present
+            if 'selected_attachments' not in st.session_state:
                 st.session_state.selected_attachments = set()
-                st.rerun()
+            
+            # Create a list of all attachments with their email info
+            exact_attachments = []
+            for email in exact_matches:
+                for attachment in email['attachments']:
+                    exact_attachments.append({
+                        'subject': email['subject'],
+                        'sender': email['sender'],
+                        'date': format_ist_time(email['date']),
+                        'filename': attachment['filename'],
+                        'size': f"{attachment['size']/1024:.1f} KB",
+                        'id': f"{email['id']}_{attachment['id']}",
+                        'message_id': email['id'],
+                        'attachment_id': attachment['id'],
+                        'email_date': format_file_date(email['date']),
+                        'password_hint': email.get('password_hint', '')
+                    })
+            
+            # Select all / Deselect all buttons for exact matches
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Select All Exact Matches"):
+                    st.session_state.selected_attachments = {att['id'] for att in exact_attachments}
+                    st.rerun()
+            with col2:
+                if st.button("Deselect All Exact Matches"):
+                    st.session_state.selected_attachments = set()
+                    st.rerun()
+            
+            # Display exact matches table
+            edited_df = display_results_table(exact_attachments, "exact_matches", "selected_attachments")
         
-        # Display results table with integrated selection
-        edited_df = display_results_table(all_attachments)
+        # Display content matches
+        if content_matches:
+            st.subheader("Content Matches")
+            
+            # Initialize selected content attachments in session state if not present
+            if 'selected_content_attachments' not in st.session_state:
+                st.session_state.selected_content_attachments = set()
+            
+            # Create a list of all content attachments with their email info
+            content_attachments = []
+            for email in content_matches:
+                for attachment in email['attachments']:
+                    content_attachments.append({
+                        'subject': email['subject'],
+                        'sender': email['sender'],
+                        'date': format_ist_time(email['date']),
+                        'filename': attachment['filename'],
+                        'size': f"{attachment['size']/1024:.1f} KB",
+                        'id': f"{email['id']}_{attachment['id']}",
+                        'message_id': email['id'],
+                        'attachment_id': attachment['id'],
+                        'email_date': format_file_date(email['date']),
+                        'password_hint': email.get('password_hint', '')
+                    })
+            
+            # Select all / Deselect all buttons for content matches
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Select All Content Matches"):
+                    st.session_state.selected_content_attachments = {att['id'] for att in content_attachments}
+                    st.rerun()
+            with col2:
+                if st.button("Deselect All Content Matches"):
+                    st.session_state.selected_content_attachments = set()
+                    st.rerun()
+            
+            # Display content matches table
+            edited_df_content = display_results_table(content_attachments, "content_matches", "selected_content_attachments")
         
         # Get selected attachments details
         selected_attachments = [
@@ -363,13 +415,26 @@ def main():
                 'message_id': att['message_id'],
                 'attachment_id': att['attachment_id'],
                 'filename': att['filename'],
-                'email_date': att['email_date']
+                'email_date': att['email_date'],
+                'password_hint': att['password_hint']
             }
-            for att in all_attachments
+            for att in exact_attachments
             if att['id'] in st.session_state.selected_attachments
         ]
+        
+        selected_content_attachments = [
+            {
+                'message_id': att['message_id'],
+                'attachment_id': att['attachment_id'],
+                'filename': att['filename'],
+                'email_date': att['email_date'],
+                'password_hint': att['password_hint']
+            }
+            for att in content_attachments
+            if att['id'] in st.session_state.selected_content_attachments
+        ]
 
-        if selected_attachments:
+        if selected_attachments or selected_content_attachments:
             st.subheader("Upload to Google Drive")
             
             # Main folder input
@@ -384,13 +449,25 @@ def main():
                 
                 for keyword in keywords:
                     with st.expander(f"Settings for keyword: {keyword}", expanded=True):
+                        # Show password hints if available
+                        hints = set(att['password_hint'] for att in selected_attachments + selected_content_attachments 
+                                 if att['password_hint'])
+                        if hints:
+                            st.info(f"Password hints found in emails: {', '.join(hints)}")
+                        
                         keyword_configs[keyword] = {
                             'password': st.text_input(
                                 "PDF Password (if required)",
                                 value="",
                                 help="Enter the password for password-protected PDFs matching this keyword",
                                 key=f"pwd_{keyword}"
-                            )
+                            ),
+                            'content_naming': st.text_input(
+                                "Content Match File Naming (optional)",
+                                value="",
+                                help="Enter a custom naming scheme for content matches (e.g., 'content_{date}'). Leave empty to use default.",
+                                key=f"naming_{keyword}"
+                            ) if selected_content_attachments else None
                         }
                 
                 if st.button("Process Selected Files"):

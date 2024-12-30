@@ -8,6 +8,7 @@ import pickle
 from typing import List, Dict, Any
 import logging
 from datetime import datetime
+import re
 
 # Get module logger
 logger = logging.getLogger(__name__)
@@ -106,42 +107,60 @@ class GmailHandler:
             logger.error(f"Authentication failed: {str(e)}")
             return False
 
-    def search_emails(self, keywords: List[str], max_results: int = 100) -> List[Dict[str, Any]]:
+    def search_emails(self, keywords: List[str], max_results: int = None) -> List[Dict[str, Any]]:
         """
         Search emails based on keywords and return those with PDF attachments
         Args:
             keywords: List of search keywords
-            max_results: Maximum number of emails to retrieve
+            max_results: Maximum number of emails to retrieve (None for no limit)
         Returns:
-            List of dictionaries containing email details
+            List of dictionaries containing email details and match type
         """
         try:
             if not self.service:
                 raise RuntimeError("Gmail service not initialized. Please authenticate first.")
 
-            # Construct search query
-            query = ' OR '.join(f'"{keyword}"' for keyword in keywords)
-            query += ' has:attachment filename:pdf'
+            # Construct search query for exact matches
+            exact_query = ' OR '.join(f'subject:"{keyword}"' for keyword in keywords)
+            exact_query += ' has:attachment filename:pdf'
+            
+            # Construct search query for content matches
+            content_query = ' OR '.join(f'"{keyword}"' for keyword in keywords)
+            content_query += ' -(' + exact_query + ') has:attachment filename:pdf'  # Exclude exact matches
 
-            results = self.service.users().messages().list(
+            results = []
+            
+            # Search for exact matches
+            exact_results = self.service.users().messages().list(
                 userId='me',
-                q=query,
+                q=exact_query,
                 maxResults=max_results
             ).execute()
+            
+            exact_messages = exact_results.get('messages', [])
+            
+            # Search for content matches
+            content_results = self.service.users().messages().list(
+                userId='me',
+                q=content_query,
+                maxResults=max_results
+            ).execute()
+            
+            content_messages = content_results.get('messages', [])
 
-            messages = results.get('messages', [])
-            email_list = []
-
-            for message in messages:
+            # Process exact matches
+            for message in exact_messages:
                 try:
                     email_data = self.service.users().messages().get(
                         userId='me',
-                        id=message['id']
+                        id=message['id'],
+                        format='full'
                     ).execute()
 
                     attachments = []
                     subject = ''
                     sender = ''
+                    password_hint = ''
 
                     # Get email headers
                     for header in email_data['payload']['headers']:
@@ -150,24 +169,102 @@ class GmailHandler:
                         elif header['name'] == 'From':
                             sender = header['value']
 
+                    # Get email body and look for password hints
+                    if 'parts' in email_data['payload']:
+                        for part in email_data['payload']['parts']:
+                            if part.get('mimeType') == 'text/plain':
+                                body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                                # Look for common password hint patterns
+                                hint_patterns = [
+                                    r'password[:\s]+([^\n]+)',
+                                    r'passcode[:\s]+([^\n]+)',
+                                    r'pin[:\s]+([^\n]+)',
+                                    r'key[:\s]+([^\n]+)'
+                                ]
+                                for pattern in hint_patterns:
+                                    match = re.search(pattern, body, re.IGNORECASE)
+                                    if match:
+                                        password_hint = match.group(1).strip()
+                                        break
+
                     # Get attachments
                     if 'parts' in email_data['payload']:
                         attachments = self._process_parts(email_data['payload']['parts'], message['id'])
 
                     if attachments:
-                        email_list.append({
+                        results.append({
                             'id': message['id'],
                             'subject': subject,
                             'sender': sender,
                             'date': email_data['internalDate'],
-                            'attachments': attachments
+                            'attachments': attachments,
+                            'match_type': 'exact',
+                            'password_hint': password_hint
                         })
 
                 except Exception as e:
                     logger.error(f"Error processing message {message['id']}: {str(e)}")
                     continue
 
-            return email_list
+            # Process content matches
+            for message in content_messages:
+                try:
+                    email_data = self.service.users().messages().get(
+                        userId='me',
+                        id=message['id'],
+                        format='full'
+                    ).execute()
+
+                    attachments = []
+                    subject = ''
+                    sender = ''
+                    password_hint = ''
+
+                    # Get email headers and process similar to exact matches
+                    for header in email_data['payload']['headers']:
+                        if header['name'] == 'Subject':
+                            subject = header['value']
+                        elif header['name'] == 'From':
+                            sender = header['value']
+
+                    # Get email body and look for password hints
+                    if 'parts' in email_data['payload']:
+                        for part in email_data['payload']['parts']:
+                            if part.get('mimeType') == 'text/plain':
+                                body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                                # Look for common password hint patterns
+                                hint_patterns = [
+                                    r'password[:\s]+([^\n]+)',
+                                    r'passcode[:\s]+([^\n]+)',
+                                    r'pin[:\s]+([^\n]+)',
+                                    r'key[:\s]+([^\n]+)'
+                                ]
+                                for pattern in hint_patterns:
+                                    match = re.search(pattern, body, re.IGNORECASE)
+                                    if match:
+                                        password_hint = match.group(1).strip()
+                                        break
+
+                    # Get attachments
+                    if 'parts' in email_data['payload']:
+                        attachments = self._process_parts(email_data['payload']['parts'], message['id'])
+
+                    if attachments:
+                        results.append({
+                            'id': message['id'],
+                            'subject': subject,
+                            'sender': sender,
+                            'date': email_data['internalDate'],
+                            'attachments': attachments,
+                            'match_type': 'content',
+                            'password_hint': password_hint
+                        })
+
+                except Exception as e:
+                    logger.error(f"Error processing message {message['id']}: {str(e)}")
+                    continue
+
+            return results
 
         except Exception as e:
             logger.error(f"Error searching emails: {str(e)}")
