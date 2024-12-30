@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -16,6 +15,7 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -23,17 +23,8 @@ var/
 # Virtual Environment
 venv/
 ENV/
-
-# Logs and Audit
-audit_logs/
-logs/
-*.log
-
-# Credentials and Environment Variables
+env/
 .env
-credentials.json
-token.pickle
-*.key
 
 # IDE
 .idea/
@@ -41,9 +32,12 @@ token.pickle
 *.swp
 *.swo
 
-# OS
-.DS_Store
-Thumbs.db
+# Application specific
+token.pickle
+credentials.json
+audit_logs/
+*.log
 
-
-au
+# Audit logs
+audit_logs/
+**/audit_log_*.json
