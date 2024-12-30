@@ -121,7 +121,7 @@ class GmailHandler:
                 raise RuntimeError("Gmail service not initialized. Please authenticate first.")
 
             # Construct search query for exact matches
-            exact_query = ' OR '.join(f'subject:"{keyword}"' for keyword in keywords)
+            exact_query = ' OR '.join(f'(subject:"{keyword}")' for keyword in keywords)
             exact_query += ' has:attachment filename:pdf'
             
             # Construct search query for content matches
@@ -145,7 +145,7 @@ class GmailHandler:
                 q=content_query,
                 maxResults=max_results
             ).execute()
-            
+
             content_messages = content_results.get('messages', [])
 
             # Process exact matches
@@ -160,6 +160,7 @@ class GmailHandler:
                     attachments = []
                     subject = ''
                     sender = ''
+                    sender_email = ''
                     password_hint = ''
 
                     # Get email headers
@@ -168,24 +169,43 @@ class GmailHandler:
                             subject = header['value']
                         elif header['name'] == 'From':
                             sender = header['value']
+                            # Extract email from sender
+                            match = re.search(r'<(.+?)>', sender)
+                            if match:
+                                sender_email = match.group(1)
+                            else:
+                                sender_email = sender
 
                     # Get email body and look for password hints
                     if 'parts' in email_data['payload']:
                         for part in email_data['payload']['parts']:
                             if part.get('mimeType') == 'text/plain':
-                                body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
-                                # Look for common password hint patterns
-                                hint_patterns = [
-                                    r'password[:\s]+([^\n]+)',
-                                    r'passcode[:\s]+([^\n]+)',
-                                    r'pin[:\s]+([^\n]+)',
-                                    r'key[:\s]+([^\n]+)'
-                                ]
-                                for pattern in hint_patterns:
-                                    match = re.search(pattern, body, re.IGNORECASE)
-                                    if match:
-                                        password_hint = match.group(1).strip()
-                                        break
+                                try:
+                                    body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                                    # Look for common password hints
+                                    hint_patterns = [
+                                        r'password[:\s]+([^\n]+)',
+                                        r'passcode[:\s]+([^\n]+)',
+                                        r'pin[:\s]+([^\n]+)',
+                                        r'key[:\s]+([^\n]+)',
+                                        r'password is[:\s]+([^\n]+)',
+                                        r'pin is[:\s]+([^\n]+)',
+                                        r'passcode is[:\s]+([^\n]+)',
+                                        # Add date of birth patterns
+                                        r'dob[:\s]+([^\n]+)',
+                                        r'date of birth[:\s]+([^\n]+)',
+                                        # Add last 4 digits patterns
+                                        r'last \d digits[:\s]+([^\n]+)',
+                                        r'last four digits[:\s]+([^\n]+)'
+                                    ]
+                                    for pattern in hint_patterns:
+                                        match = re.search(pattern, body, re.IGNORECASE)
+                                        if match:
+                                            password_hint = match.group(1).strip()
+                                            break
+                                except Exception as e:
+                                    logger.error(f"Error processing email body: {str(e)}")
+                                    continue
 
                     # Get attachments
                     if 'parts' in email_data['payload']:
@@ -196,6 +216,7 @@ class GmailHandler:
                             'id': message['id'],
                             'subject': subject,
                             'sender': sender,
+                            'sender_email': sender_email,
                             'date': email_data['internalDate'],
                             'attachments': attachments,
                             'match_type': 'exact',
@@ -218,32 +239,52 @@ class GmailHandler:
                     attachments = []
                     subject = ''
                     sender = ''
+                    sender_email = ''
                     password_hint = ''
 
-                    # Get email headers and process similar to exact matches
+                    # Get email headers
                     for header in email_data['payload']['headers']:
                         if header['name'] == 'Subject':
                             subject = header['value']
                         elif header['name'] == 'From':
                             sender = header['value']
+                            # Extract email from sender
+                            match = re.search(r'<(.+?)>', sender)
+                            if match:
+                                sender_email = match.group(1)
+                            else:
+                                sender_email = sender
 
                     # Get email body and look for password hints
                     if 'parts' in email_data['payload']:
                         for part in email_data['payload']['parts']:
                             if part.get('mimeType') == 'text/plain':
-                                body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
-                                # Look for common password hint patterns
-                                hint_patterns = [
-                                    r'password[:\s]+([^\n]+)',
-                                    r'passcode[:\s]+([^\n]+)',
-                                    r'pin[:\s]+([^\n]+)',
-                                    r'key[:\s]+([^\n]+)'
-                                ]
-                                for pattern in hint_patterns:
-                                    match = re.search(pattern, body, re.IGNORECASE)
-                                    if match:
-                                        password_hint = match.group(1).strip()
-                                        break
+                                try:
+                                    body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                                    # Look for common password hints
+                                    hint_patterns = [
+                                        r'password[:\s]+([^\n]+)',
+                                        r'passcode[:\s]+([^\n]+)',
+                                        r'pin[:\s]+([^\n]+)',
+                                        r'key[:\s]+([^\n]+)',
+                                        r'password is[:\s]+([^\n]+)',
+                                        r'pin is[:\s]+([^\n]+)',
+                                        r'passcode is[:\s]+([^\n]+)',
+                                        # Add date of birth patterns
+                                        r'dob[:\s]+([^\n]+)',
+                                        r'date of birth[:\s]+([^\n]+)',
+                                        # Add last 4 digits patterns
+                                        r'last \d digits[:\s]+([^\n]+)',
+                                        r'last four digits[:\s]+([^\n]+)'
+                                    ]
+                                    for pattern in hint_patterns:
+                                        match = re.search(pattern, body, re.IGNORECASE)
+                                        if match:
+                                            password_hint = match.group(1).strip()
+                                            break
+                                except Exception as e:
+                                    logger.error(f"Error processing email body: {str(e)}")
+                                    continue
 
                     # Get attachments
                     if 'parts' in email_data['payload']:
@@ -254,6 +295,7 @@ class GmailHandler:
                             'id': message['id'],
                             'subject': subject,
                             'sender': sender,
+                            'sender_email': sender_email,
                             'date': email_data['internalDate'],
                             'attachments': attachments,
                             'match_type': 'content',

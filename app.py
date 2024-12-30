@@ -249,28 +249,28 @@ def display_results_table(all_attachments, table_name: str = "", selected_attach
     
     return edited_df
 
-def get_pattern_from_subject(subject: str) -> str:
+def get_pattern_from_subject(subject: str, sender_email: str) -> str:
     """Extract pattern from email subject safely"""
     try:
         if not subject or not subject.strip():
-            return "No Subject"
+            return f"No Subject - {sender_email}"
         words = subject.strip().split()
         if not words:
-            return "No Subject"
-        return words[0]
+            return f"No Subject - {sender_email}"
+        return f"{words[0]} - {sender_email}"
     except Exception as e:
         logger.error(f"Error extracting pattern from subject: {str(e)}")
-        return "No Subject"
+        return f"No Subject - {sender_email}"
 
 def display_content_matches(content_matches, selected_content_attachments_key: str = "selected_content_attachments"):
-    """Display content matches grouped by subject pattern"""
+    """Display content matches grouped by subject pattern and sender"""
     if not content_matches:
         return
         
-    # Group content matches by subject pattern
+    # Group content matches by subject pattern and sender
     subject_patterns = {}
     for email in content_matches:
-        pattern = get_pattern_from_subject(email.get('subject', ''))
+        pattern = get_pattern_from_subject(email.get('subject', ''), email.get('sender_email', 'unknown'))
         if pattern not in subject_patterns:
             subject_patterns[pattern] = []
         subject_patterns[pattern].append(email)
@@ -291,6 +291,7 @@ def display_content_matches(content_matches, selected_content_attachments_key: s
                 group_attachments.append({
                     'subject': email.get('subject', 'No Subject'),
                     'sender': email.get('sender', 'Unknown'),
+                    'sender_email': email.get('sender_email', 'Unknown'),
                     'date': format_ist_time(email['date']),
                     'filename': attachment['filename'],
                     'size': f"{attachment['size']/1024:.1f} KB",
@@ -509,7 +510,7 @@ def main():
             content_match_groups = {}
             
             for email in content_matches:
-                pattern = get_pattern_from_subject(email.get('subject', ''))
+                pattern = get_pattern_from_subject(email.get('subject', ''), email.get('sender_email', 'unknown'))
                 if pattern not in content_match_groups:
                     content_match_groups[pattern] = f"selected_content_attachments_{pattern}"
                     if content_match_groups[pattern] not in st.session_state:
@@ -519,6 +520,7 @@ def main():
                     content_attachments.append({
                         'subject': email.get('subject', 'No Subject'),
                         'sender': email.get('sender', 'Unknown'),
+                        'sender_email': email.get('sender_email', 'Unknown'),
                         'date': format_ist_time(email['date']),
                         'filename': attachment['filename'],
                         'size': f"{attachment['size']/1024:.1f} KB",
