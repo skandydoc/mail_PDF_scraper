@@ -55,14 +55,25 @@ def get_file_name(original_name: str, email_date: str) -> str:
     extension = original_name.split('.')[-1] if '.' in original_name else 'pdf'
     return f"{email_date}.{extension}"
 
-def process_pdf_batch(attachments, folder_id: str, current_keyword: str, password: str = None):
+def process_pdf_batch(attachments, folder_id: str, current_keyword: str, password: str = None, processed_files: set = None):
     """Process a batch of PDF attachments"""
     success_count = 0
     password_required = []
     
+    if processed_files is None:
+        processed_files = set()
+    
     logger.info(f"Starting batch processing for keyword: {current_keyword}")
     
     for attachment in attachments:
+        # Generate a unique identifier for the file
+        file_id = f"{attachment['message_id']}_{attachment['attachment_id']}"
+        
+        # Skip if already processed
+        if file_id in processed_files:
+            logger.info(f"Skipping already processed file: {attachment['filename']}")
+            continue
+            
         try:
             logger.info(f"Processing attachment: {attachment['filename']}")
             # Download
@@ -94,6 +105,7 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str, passwor
                     folder_id
                 ):
                     success_count += 1
+                    processed_files.add(file_id)  # Mark as processed
                     logger.info(f"Successfully processed and uploaded: {new_filename}")
                     
                     # Log successful upload
@@ -103,6 +115,8 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str, passwor
                         {
                             'filename': new_filename,
                             'original_name': attachment['filename'],
+                            'keyword': current_keyword,
+                            'folder_id': folder_id,
                             'timestamp': datetime.now(ist).isoformat()
                         }
                     )
@@ -112,9 +126,9 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str, passwor
             continue
             
     logger.info(f"Batch processing completed. Success: {success_count}, Password Required: {len(password_required)}")
-    return success_count, password_required
+    return success_count, password_required, processed_files
 
-def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, password: str = None):
+def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, password: str = None, processed_files: set = None):
     """Process a batch of attachments for a specific keyword"""
     try:
         # Create subfolder for keyword
@@ -126,21 +140,22 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
         
         if not keyword_folder_id:
             st.error(f"Failed to create folder for keyword: {keyword}")
-            return 0, []
+            return 0, [], processed_files
             
         # Process files
-        success_count, password_required = process_pdf_batch(
+        success_count, password_required, updated_processed_files = process_pdf_batch(
             attachments,
             keyword_folder_id,
             keyword,
-            password
+            password,
+            processed_files
         )
         
-        return success_count, password_required
+        return success_count, password_required, updated_processed_files
         
     except Exception as e:
         logger.error(f"Error processing keyword batch {keyword}: {str(e)}")
-        return 0, []
+        return 0, [], processed_files
 
 def initialize_handlers():
     """Initialize Gmail and Drive handlers with authentication"""
@@ -484,18 +499,42 @@ def main():
                             # Process each keyword with all selected files
                             total_success = 0
                             all_password_required = []
+                            processed_files = set()  # Track processed files across all keywords
                             
+                            # Process exact matches first
                             for keyword in keywords:
-                                success_count, password_required = process_keyword_batch(
-                                    keyword,
-                                    selected_attachments,  # Pass all attachments for each keyword
-                                    main_folder_id,
-                                    keyword_configs[keyword]['password']
-                                )
-                                
-                                # Update tracking
-                                total_success += success_count
-                                all_password_required.extend(password_required)
+                                if selected_attachments:  # Only process if there are exact matches
+                                    success_count, password_required, processed_files = process_keyword_batch(
+                                        keyword,
+                                        selected_attachments,
+                                        main_folder_id,
+                                        keyword_configs[keyword]['password'],
+                                        processed_files
+                                    )
+                                    
+                                    # Update tracking
+                                    total_success += success_count
+                                    all_password_required.extend(password_required)
+                            
+                            # Then process content matches
+                            for keyword in keywords:
+                                if selected_content_attachments:  # Only process if there are content matches
+                                    # Apply custom naming if specified
+                                    if keyword_configs[keyword].get('content_naming'):
+                                        for att in selected_content_attachments:
+                                            att['custom_naming'] = keyword_configs[keyword]['content_naming']
+                                    
+                                    success_count, password_required, processed_files = process_keyword_batch(
+                                        f"{keyword}_content",  # Separate folder for content matches
+                                        selected_content_attachments,
+                                        main_folder_id,
+                                        keyword_configs[keyword]['password'],
+                                        processed_files
+                                    )
+                                    
+                                    # Update tracking
+                                    total_success += success_count
+                                    all_password_required.extend(password_required)
                             
                             # Show results
                             if total_success > 0:
