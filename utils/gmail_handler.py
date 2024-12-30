@@ -7,6 +7,7 @@ import os.path
 import pickle
 from typing import List, Dict, Any
 import logging
+import webbrowser
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +21,35 @@ class GmailHandler:
         self.creds = None
         self.service = None
 
+    def _create_local_server_handler(self):
+        """Create a custom success handler for OAuth flow"""
+        success_html = """
+        <html>
+            <head>
+                <title>Authentication Successful</title>
+                <script>
+                    setTimeout(function() {
+                        window.close();
+                    }, 1000);
+                </script>
+                <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding-top: 50px; }
+                    .success { color: #4CAF50; }
+                    .message { margin-top: 20px; }
+                </style>
+            </head>
+            <body>
+                <h2 class="success">✓ Authentication Successful!</h2>
+                <p class="message">This window will close automatically...</p>
+            </body>
+        </html>
+        """
+        
+        def success_handler(url):
+            return success_html
+
+        return success_handler
+
     def authenticate(self) -> bool:
         """
         Handles Gmail authentication using OAuth2
@@ -27,23 +57,66 @@ class GmailHandler:
             bool: True if authentication successful, False otherwise
         """
         try:
+            if not os.path.exists('credentials.json'):
+                logger.error("credentials.json not found in project root directory")
+                raise FileNotFoundError(
+                    "credentials.json not found. Please follow the setup instructions in README.md "
+                    "to create and download your Google Cloud credentials."
+                )
+
             if os.path.exists('token.pickle'):
                 with open('token.pickle', 'rb') as token:
                     self.creds = pickle.load(token)
 
             if not self.creds or not self.creds.valid:
                 if self.creds and self.creds.expired and self.creds.refresh_token:
-                    self.creds.refresh(Request())
-                else:
-                    flow = InstalledAppFlow.from_client_secrets_file(
-                        'credentials.json', SCOPES)
-                    self.creds = flow.run_local_server(port=0)
+                    try:
+                        self.creds.refresh(Request())
+                    except Exception as e:
+                        logger.error(f"Error refreshing credentials: {str(e)}")
+                        self.creds = None
+                
+                if not self.creds:
+                    try:
+                        flow = InstalledAppFlow.from_client_secrets_file(
+                            'credentials.json', SCOPES)
+                        
+                        # Set up custom success handler
+                        flow.authorization_url()
+                        flow._oauth2session.redirect_uri = 'http://localhost:0'
+                        flow._oauth2session.register_compliance_hook(
+                            'redirect_uri_match', lambda x: 'http://localhost'
+                        )
+                        
+                        # Run the local server with custom success page
+                        self.creds = flow.run_local_server(
+                            port=0,
+                            success_message=None,
+                            authorization_prompt_message=None,
+                            success_handler=self._create_local_server_handler()
+                        )
+                        
+                    except Exception as e:
+                        logger.error(f"Error in OAuth flow: {str(e)}")
+                        raise RuntimeError(
+                            "Authentication failed. Please ensure you have enabled the Gmail API "
+                            "and configured the OAuth consent screen in Google Cloud Console."
+                        )
 
-                with open('token.pickle', 'wb') as token:
-                    pickle.dump(self.creds, token)
+                # Save credentials for future use
+                try:
+                    with open('token.pickle', 'wb') as token:
+                        pickle.dump(self.creds, token)
+                except Exception as e:
+                    logger.warning(f"Could not save credentials: {str(e)}")
+                    # Continue even if saving fails
 
             self.service = build('gmail', 'v1', credentials=self.creds)
             return True
+
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            raise
         except Exception as e:
             logger.error(f"Authentication failed: {str(e)}")
             return False
@@ -58,6 +131,9 @@ class GmailHandler:
             List of dictionaries containing email details
         """
         try:
+            if not self.service:
+                raise RuntimeError("Gmail service not initialized. Please authenticate first.")
+
             # Construct search query
             query = ' OR '.join(f'"{keyword}"' for keyword in keywords)
             query += ' has:attachment filename:pdf'
@@ -72,36 +148,42 @@ class GmailHandler:
             email_list = []
 
             for message in messages:
-                email_data = self.service.users().messages().get(
-                    userId='me',
-                    id=message['id']
-                ).execute()
+                try:
+                    email_data = self.service.users().messages().get(
+                        userId='me',
+                        id=message['id']
+                    ).execute()
 
-                attachments = []
-                subject = ''
-                sender = ''
+                    attachments = []
+                    subject = ''
+                    sender = ''
 
-                # Get email headers
-                for header in email_data['payload']['headers']:
-                    if header['name'] == 'Subject':
-                        subject = header['value']
-                    elif header['name'] == 'From':
-                        sender = header['value']
+                    # Get email headers
+                    for header in email_data['payload']['headers']:
+                        if header['name'] == 'Subject':
+                            subject = header['value']
+                        elif header['name'] == 'From':
+                            sender = header['value']
 
-                # Get attachments
-                if 'parts' in email_data['payload']:
-                    attachments = self._process_parts(email_data['payload']['parts'], message['id'])
+                    # Get attachments
+                    if 'parts' in email_data['payload']:
+                        attachments = self._process_parts(email_data['payload']['parts'], message['id'])
 
-                if attachments:
-                    email_list.append({
-                        'id': message['id'],
-                        'subject': subject,
-                        'sender': sender,
-                        'date': email_data['internalDate'],
-                        'attachments': attachments
-                    })
+                    if attachments:
+                        email_list.append({
+                            'id': message['id'],
+                            'subject': subject,
+                            'sender': sender,
+                            'date': email_data['internalDate'],
+                            'attachments': attachments
+                        })
+
+                except Exception as e:
+                    logger.error(f"Error processing message {message['id']}: {str(e)}")
+                    continue
 
             return email_list
+
         except Exception as e:
             logger.error(f"Error searching emails: {str(e)}")
             return []
@@ -139,6 +221,9 @@ class GmailHandler:
             Attachment data as bytes
         """
         try:
+            if not self.service:
+                raise RuntimeError("Gmail service not initialized. Please authenticate first.")
+
             attachment = self.service.users().messages().attachments().get(
                 userId='me',
                 messageId=message_id,

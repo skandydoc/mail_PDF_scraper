@@ -2,9 +2,12 @@ import streamlit as st
 import os
 from utils.gmail_handler import GmailHandler
 from utils.drive_handler import DriveHandler
-from utils.encryption import Encryptor
+from utils.pdf_handler import PdfHandler
+from utils.hipaa_compliance import HipaaCompliance
 from dotenv import load_dotenv
 import logging
+from datetime import datetime
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -14,41 +17,125 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Initialize session state
+if 'authentication_state' not in st.session_state:
+    st.session_state.authentication_state = 'not_started'
 if 'gmail_handler' not in st.session_state:
     st.session_state.gmail_handler = None
 if 'drive_handler' not in st.session_state:
     st.session_state.drive_handler = None
-if 'encryptor' not in st.session_state:
-    encryption_key = os.getenv('ENCRYPTION_KEY')
-    st.session_state.encryptor = Encryptor(encryption_key)
+if 'pdf_handler' not in st.session_state:
+    st.session_state.pdf_handler = PdfHandler()
+if 'hipaa' not in st.session_state:
+    st.session_state.hipaa = HipaaCompliance()
+if 'user_session' not in st.session_state:
+    st.session_state.user_session = None
 
 def initialize_handlers():
     """Initialize Gmail and Drive handlers with authentication"""
     try:
         gmail_handler = GmailHandler()
+        st.session_state.authentication_state = 'in_progress'
+        
         if gmail_handler.authenticate():
             st.session_state.gmail_handler = gmail_handler
             st.session_state.drive_handler = DriveHandler(gmail_handler.creds)
+            
+            # Create HIPAA-compliant session
+            user_info = gmail_handler.service.users().getProfile(userId='me').execute()
+            st.session_state.user_session = st.session_state.hipaa.create_session(user_info['emailAddress'])
+            
+            # Log successful authentication
+            st.session_state.hipaa.log_activity(
+                user_info['emailAddress'],
+                'authentication',
+                {'status': 'success', 'timestamp': datetime.utcnow().isoformat()}
+            )
+            
+            st.session_state.authentication_state = 'completed'
             return True
+            
+        st.session_state.authentication_state = 'failed'
         return False
     except Exception as e:
         logger.error(f"Error initializing handlers: {str(e)}")
+        st.session_state.authentication_state = 'failed'
         return False
+
+def process_pdf_batch(attachments, folder_id: str, current_keyword: str):
+    """Process a batch of PDF attachments"""
+    success_count = 0
+    password_required = []
+    
+    for attachment in attachments:
+        try:
+            # Download
+            file_data = st.session_state.gmail_handler.download_attachment(
+                attachment['message_id'],
+                attachment['attachment_id']
+            )
+            
+            if file_data:
+                # Process PDF and check for password protection
+                processed_data, needs_password = st.session_state.pdf_handler.process_pdf(
+                    file_data,
+                    current_keyword
+                )
+                
+                if needs_password:
+                    password_required.append(attachment)
+                    continue
+                
+                # Verify data integrity
+                file_hash = st.session_state.hipaa.verify_data_integrity(processed_data)
+                
+                # Upload to Drive
+                if st.session_state.drive_handler.upload_file(
+                    processed_data,
+                    attachment['filename'],
+                    folder_id
+                ):
+                    success_count += 1
+                    
+                    # Log successful upload
+                    st.session_state.hipaa.log_activity(
+                        st.session_state.gmail_handler.service.users().getProfile(userId='me').execute()['emailAddress'],
+                        'file_upload',
+                        {
+                            'filename': attachment['filename'],
+                            'hash': file_hash,
+                            'timestamp': datetime.utcnow().isoformat()
+                        }
+                    )
+        
+        except Exception as e:
+            logger.error(f"Error processing attachment {attachment['filename']}: {str(e)}")
+            continue
+            
+    return success_count, password_required
 
 def main():
     st.title("Secure Gmail PDF Attachment Scraper")
     st.write("HIPAA-compliant tool for downloading PDF attachments from Gmail")
 
     # Authentication
-    if not st.session_state.gmail_handler:
-        st.warning("Please authenticate with Google to continue")
-        if st.button("Authenticate"):
+    if not st.session_state.gmail_handler or not st.session_state.user_session:
+        if st.session_state.authentication_state == 'not_started':
+            st.warning("Please authenticate with Google to continue")
+            if st.button("Authenticate"):
+                initialize_handlers()
+                st.rerun()
+        
+        elif st.session_state.authentication_state == 'in_progress':
             with st.spinner("Authenticating..."):
-                if initialize_handlers():
-                    st.success("Authentication successful!")
-                    st.rerun()
-                else:
-                    st.error("Authentication failed. Please try again.")
+                time.sleep(1)  # Give time for OAuth flow to complete
+                st.rerun()
+        
+        elif st.session_state.authentication_state == 'failed':
+            st.error("Authentication failed. Please try again.")
+            if st.button("Retry Authentication"):
+                st.session_state.authentication_state = 'not_started'
+                st.rerun()
+        
         return
 
     # Search Parameters
@@ -62,6 +149,11 @@ def main():
     if not keywords:
         st.warning("Please enter at least one keyword")
         return
+
+    # Clear password cache when keywords change
+    if 'last_keywords' not in st.session_state or st.session_state.last_keywords != keywords:
+        st.session_state.pdf_handler.clear_password_cache()
+        st.session_state.last_keywords = keywords
 
     # Search Emails
     if st.button("Search Emails"):
@@ -102,7 +194,7 @@ def main():
                 help="Enter the name of the folder where files will be uploaded. A new folder will be created if it doesn't exist."
             )
 
-            if folder_name and st.button("Download and Upload Selected Files"):
+            if folder_name and st.button("Process Selected Files"):
                 with st.spinner("Processing files..."):
                     try:
                         # Check/Create folder
@@ -113,39 +205,38 @@ def main():
                                 st.error("Failed to create folder in Google Drive")
                                 return
 
-                        # Process each selected attachment
+                        # Process files
                         success_count = 0
-                        for attachment in selected_attachments:
-                            try:
-                                # Download
-                                file_data = st.session_state.gmail_handler.download_attachment(
-                                    attachment['message_id'],
-                                    attachment['attachment_id']
-                                )
-                                
-                                if file_data:
-                                    # Encrypt
-                                    encrypted_data, iv = st.session_state.encryptor.encrypt_file(file_data)
-                                    
-                                    # Upload encrypted file
-                                    if st.session_state.drive_handler.upload_file(
-                                        encrypted_data,
-                                        f"encrypted_{attachment['filename']}",
-                                        folder_id
-                                    ):
-                                        success_count += 1
-                                    
-                                    # Upload IV (needed for decryption)
-                                    st.session_state.drive_handler.upload_file(
-                                        iv,
-                                        f"iv_{attachment['filename']}.bin",
-                                        folder_id
-                                    )
+                        password_required_files = []
+                        
+                        for keyword in keywords:
+                            keyword_attachments = selected_attachments
+                            batch_success, batch_password_required = process_pdf_batch(
+                                keyword_attachments,
+                                folder_id,
+                                keyword
+                            )
+                            success_count += batch_success
+                            password_required_files.extend(batch_password_required)
+                        
+                        # Handle password-protected files
+                        if password_required_files:
+                            st.warning("Some files require a password")
+                            password = st.text_input("Enter PDF password", type="password")
                             
-                            except Exception as e:
-                                logger.error(f"Error processing attachment {attachment['filename']}: {str(e)}")
-                                continue
-
+                            if password and st.button("Process Password-Protected Files"):
+                                with st.spinner("Processing password-protected files..."):
+                                    batch_success, still_password_required = process_pdf_batch(
+                                        password_required_files,
+                                        folder_id,
+                                        keywords[0],  # Use first keyword for password caching
+                                        password
+                                    )
+                                    success_count += batch_success
+                                    
+                                    if still_password_required:
+                                        st.error("Incorrect password for some files")
+                        
                         if success_count > 0:
                             st.success(f"Successfully processed {success_count} files")
                         else:
