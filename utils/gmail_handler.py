@@ -29,30 +29,28 @@ class GmailHandler:
             <html>
                 <head>
                     <title>Authentication Successful</title>
+                    <meta http-equiv="refresh" content="2;url=http://localhost:8501">
                     <script>
-                        window.onload = function() {
-                            try {
-                                // Try to reload the parent window first
-                                if (window.opener) {
-                                    window.opener.location.href = 'http://localhost:8501';
-                                }
-                            } catch (e) {
-                                console.error('Error reloading parent:', e);
-                            }
-                            
-                            // Set a timeout to ensure the parent window has time to reload
-                            setTimeout(function() {
-                                try {
+                        function closeAndRedirect() {
+                            if (window.opener) {
+                                window.opener.location.reload();
+                                setTimeout(function() {
                                     window.close();
-                                    // If window.close() doesn't work (e.g., in some browsers), redirect
                                     window.location.href = 'http://localhost:8501';
-                                } catch (e) {
-                                    console.error('Error closing window:', e);
-                                    // Final fallback: just redirect
-                                    window.location.href = 'http://localhost:8501';
-                                }
-                            }, 1500);
-                        };
+                                }, 500);
+                            } else {
+                                window.location.href = 'http://localhost:8501';
+                            }
+                        }
+                        
+                        // Execute immediately and also set as onload handler
+                        closeAndRedirect();
+                        window.onload = closeAndRedirect;
+                        
+                        // Final fallback
+                        setTimeout(function() {
+                            window.location.href = 'http://localhost:8501';
+                        }, 2000);
                     </script>
                     <style>
                         body { 
@@ -99,20 +97,28 @@ class GmailHandler:
                             from { transform: scale(0); }
                             to { transform: scale(1); }
                         }
+                        .spinner {
+                            width: 30px;
+                            height: 30px;
+                            border: 3px solid #f3f3f3;
+                            border-top: 3px solid #4CAF50;
+                            border-radius: 50%;
+                            margin: 20px auto;
+                            animation: spin 1s linear infinite;
+                        }
+                        @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                        }
                     </style>
                 </head>
                 <body>
                     <div class="container">
                         <div class="checkmark">✓</div>
                         <h2 class="success">Authentication Successful!</h2>
+                        <div class="spinner"></div>
                         <p class="message">Redirecting back to application...</p>
                     </div>
-                    <script>
-                        // Force redirect after 3 seconds as a final fallback
-                        setTimeout(function() {
-                            window.location.href = 'http://localhost:8501';
-                        }, 3000);
-                    </script>
                 </body>
             </html>
             """
