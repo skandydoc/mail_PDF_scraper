@@ -7,7 +7,6 @@ import os.path
 import pickle
 from typing import List, Dict, Any
 import logging
-import webbrowser
 from datetime import datetime
 
 # Get module logger
@@ -21,108 +20,6 @@ class GmailHandler:
         self.creds = None
         self.service = None
         logger.info("Gmail handler initialized")
-
-    def _create_local_server_handler(self):
-        """Create a custom success handler for OAuth flow"""
-        def success_handler(url):
-            return """
-            <html>
-                <head>
-                    <title>Authentication Successful</title>
-                    <meta http-equiv="refresh" content="2;url=http://localhost:8501">
-                    <script>
-                        function closeAndRedirect() {
-                            if (window.opener) {
-                                window.opener.location.reload();
-                                setTimeout(function() {
-                                    window.close();
-                                    window.location.href = 'http://localhost:8501';
-                                }, 500);
-                            } else {
-                                window.location.href = 'http://localhost:8501';
-                            }
-                        }
-                        
-                        // Execute immediately and also set as onload handler
-                        closeAndRedirect();
-                        window.onload = closeAndRedirect;
-                        
-                        // Final fallback
-                        setTimeout(function() {
-                            window.location.href = 'http://localhost:8501';
-                        }, 2000);
-                    </script>
-                    <style>
-                        body { 
-                            font-family: Arial, sans-serif; 
-                            text-align: center; 
-                            padding-top: 50px;
-                            background-color: #f0f2f6;
-                            margin: 0;
-                            height: 100vh;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                        }
-                        .success { 
-                            color: #4CAF50;
-                            margin-bottom: 20px;
-                            font-size: 24px;
-                        }
-                        .message { 
-                            margin-top: 20px;
-                            color: #666;
-                            font-size: 16px;
-                        }
-                        .container {
-                            background: white;
-                            padding: 40px;
-                            border-radius: 10px;
-                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                            max-width: 400px;
-                            width: 90%;
-                            animation: fadeIn 0.5s ease-out;
-                        }
-                        @keyframes fadeIn {
-                            from { opacity: 0; transform: translateY(20px); }
-                            to { opacity: 1; transform: translateY(0); }
-                        }
-                        .checkmark {
-                            font-size: 48px;
-                            color: #4CAF50;
-                            margin-bottom: 20px;
-                            animation: scaleIn 0.5s ease-out;
-                        }
-                        @keyframes scaleIn {
-                            from { transform: scale(0); }
-                            to { transform: scale(1); }
-                        }
-                        .spinner {
-                            width: 30px;
-                            height: 30px;
-                            border: 3px solid #f3f3f3;
-                            border-top: 3px solid #4CAF50;
-                            border-radius: 50%;
-                            margin: 20px auto;
-                            animation: spin 1s linear infinite;
-                        }
-                        @keyframes spin {
-                            0% { transform: rotate(0deg); }
-                            100% { transform: rotate(360deg); }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="checkmark">✓</div>
-                        <h2 class="success">Authentication Successful!</h2>
-                        <div class="spinner"></div>
-                        <p class="message">Redirecting back to application...</p>
-                    </div>
-                </body>
-            </html>
-            """
-        return success_handler
 
     def authenticate(self) -> bool:
         """
@@ -166,7 +63,7 @@ class GmailHandler:
                         # Run the local server with custom success page
                         self.creds = flow.run_local_server(
                             port=0,
-                            success_handler=self._create_local_server_handler(),
+                            success_message='The authentication flow has completed. You can close this window and return to the application.',
                             authorization_prompt_message=None,
                             open_browser=True
                         )

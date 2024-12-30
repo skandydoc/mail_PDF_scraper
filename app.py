@@ -38,7 +38,9 @@ def initialize_handlers():
         gmail_handler = GmailHandler()
         st.session_state.authentication_state = 'in_progress'
         
-        if gmail_handler.authenticate():
+        auth_success = gmail_handler.authenticate()
+        
+        if auth_success:
             st.session_state.gmail_handler = gmail_handler
             st.session_state.drive_handler = DriveHandler(gmail_handler.creds)
             
@@ -55,6 +57,7 @@ def initialize_handlers():
             
             logger.info(f"Authentication successful for user: {user_info['emailAddress']}")
             st.session_state.authentication_state = 'completed'
+            st.rerun()
             return True
             
         logger.error("Authentication failed in handler initialization")
@@ -134,12 +137,12 @@ def main():
             st.warning("Please authenticate with Google to continue")
             if st.button("Authenticate"):
                 initialize_handlers()
-                st.rerun()
         
         elif st.session_state.authentication_state == 'in_progress':
-            with st.spinner("Authenticating..."):
-                time.sleep(1)  # Give time for OAuth flow to complete
-                st.rerun()
+            st.info("Authentication in progress... Please complete the authentication in the popup window.")
+            st.spinner("Waiting for authentication...")
+            time.sleep(1)
+            st.rerun()
         
         elif st.session_state.authentication_state == 'failed':
             st.error("Authentication failed. Please try again.")
