@@ -24,52 +24,55 @@ class GmailHandler:
 
     def _create_local_server_handler(self):
         """Create a custom success handler for OAuth flow"""
-        success_html = """
-        <html>
-            <head>
-                <title>Authentication Successful</title>
-                <script>
-                    window.onload = function() {
-                        setTimeout(function() {
+        def success_handler(url):
+            return """
+            <html>
+                <head>
+                    <title>Authentication Successful</title>
+                    <script>
+                        function closeAndRedirect() {
+                            if (window.opener) {
+                                window.opener.location.reload();
+                            }
                             window.close();
                             window.location.href = 'http://localhost:8501';
-                        }, 1000);
-                    }
-                </script>
-                <style>
-                    body { 
-                        font-family: Arial, sans-serif; 
-                        text-align: center; 
-                        padding-top: 50px;
-                        background-color: #f0f2f6;
-                    }
-                    .success { 
-                        color: #4CAF50;
-                        margin-bottom: 20px;
-                    }
-                    .message { 
-                        margin-top: 20px;
-                        color: #666;
-                    }
-                    .container {
-                        background: white;
-                        padding: 30px;
-                        border-radius: 10px;
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                        max-width: 400px;
-                        margin: 0 auto;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h2 class="success">✓ Authentication Successful!</h2>
-                    <p class="message">Redirecting back to application...</p>
-                </div>
-            </body>
-        </html>
-        """
-        return success_html
+                        }
+                        setTimeout(closeAndRedirect, 1000);
+                    </script>
+                    <style>
+                        body { 
+                            font-family: Arial, sans-serif; 
+                            text-align: center; 
+                            padding-top: 50px;
+                            background-color: #f0f2f6;
+                        }
+                        .success { 
+                            color: #4CAF50;
+                            margin-bottom: 20px;
+                        }
+                        .message { 
+                            margin-top: 20px;
+                            color: #666;
+                        }
+                        .container {
+                            background: white;
+                            padding: 30px;
+                            border-radius: 10px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            max-width: 400px;
+                            margin: 0 auto;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h2 class="success">✓ Authentication Successful!</h2>
+                        <p class="message">Redirecting back to application...</p>
+                    </div>
+                </body>
+            </html>
+            """
+        return success_handler
 
     def authenticate(self) -> bool:
         """
@@ -113,8 +116,8 @@ class GmailHandler:
                         # Run the local server with custom success page
                         self.creds = flow.run_local_server(
                             port=0,
-                            success_message=self._create_local_server_handler(),
-                            authorization_prompt_message="",
+                            success_handler=self._create_local_server_handler(),
+                            authorization_prompt_message=None,
                             open_browser=True
                         )
                         logger.info("OAuth flow completed successfully")
