@@ -219,9 +219,50 @@ def display_results_table(all_attachments):
     
     return edited_df
 
+def sign_out():
+    """Sign out the current user and clear session state"""
+    try:
+        if 'gmail_handler' in st.session_state and st.session_state.gmail_handler:
+            # Log sign out activity
+            user_info = st.session_state.gmail_handler.service.users().getProfile(userId='me').execute()
+            st.session_state.security.log_activity(
+                user_info['emailAddress'],
+                'sign_out',
+                {'timestamp': datetime.now(ist).isoformat()}
+            )
+        
+        # Remove token file
+        if os.path.exists('token.pickle'):
+            os.remove('token.pickle')
+        
+        # Clear session state
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        
+        logger.info("User signed out successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error during sign out: {str(e)}")
+        return False
+
 def main():
     logger.info("Application started")
-    st.title("Secure Gmail PDF Attachment Processor")
+    
+    # Create title row with sign out button
+    col1, col2 = st.columns([6, 1])
+    with col1:
+        st.title("Secure Gmail PDF Attachment Processor")
+    with col2:
+        if 'gmail_handler' in st.session_state and st.session_state.gmail_handler:
+            if st.button("Sign Out", type="secondary"):
+                with st.spinner("Signing out..."):
+                    if sign_out():
+                        st.success("Signed out successfully!")
+                        time.sleep(1)  # Brief pause to show success message
+                        st.rerun()
+                    else:
+                        st.error("Error signing out. Please try again.")
+    
     st.write("Tool for downloading and organizing PDF attachments from Gmail")
 
     # Initialize session states
@@ -242,7 +283,7 @@ def main():
                     st.error(st.session_state.auth_error)
                     st.session_state.auth_error = None
                 
-                if st.button("Authenticate", key="auth_button"):
+                if st.button("Sign In with Google", key="auth_button"):
                     with st.spinner("Authenticating with Google..."):
                         if initialize_handlers():
                             st.success("Authentication successful!")

@@ -23,16 +23,11 @@ var/
 # Virtual Environment
 venv/
 ENV/
+
+# Logs and Audit
 audit_logs/
 logs/
-
-audit_log_2024-12-30.json
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+*.log
 
 # Credentials and Environment Variables
 .env
@@ -40,12 +35,15 @@ credentials.json
 token.pickle
 *.key
 
-# Logs
-*.log
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
 
 
 au
