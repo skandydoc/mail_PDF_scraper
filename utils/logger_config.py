@@ -26,19 +26,22 @@ def setup_logger():
     file_handler.setFormatter(formatter)
     file_handler.setLevel(logging.INFO)
     
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)
-    
     # Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
+    
+    # Remove any existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    # Add only file handler
     root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
     
     # Set secure permissions for log directory and file
     os.chmod(log_dir, 0o750)
     os.chmod(log_file, 0o640)
+    
+    # Disable propagation to console
+    root_logger.propagate = False
     
     return root_logger 

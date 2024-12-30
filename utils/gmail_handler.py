@@ -30,14 +30,29 @@ class GmailHandler:
                 <head>
                     <title>Authentication Successful</title>
                     <script>
-                        function closeAndRedirect() {
-                            if (window.opener) {
-                                window.opener.location.reload();
+                        window.onload = function() {
+                            try {
+                                // Try to reload the parent window first
+                                if (window.opener) {
+                                    window.opener.location.href = 'http://localhost:8501';
+                                }
+                            } catch (e) {
+                                console.error('Error reloading parent:', e);
                             }
-                            window.close();
-                            window.location.href = 'http://localhost:8501';
-                        }
-                        setTimeout(closeAndRedirect, 1000);
+                            
+                            // Set a timeout to ensure the parent window has time to reload
+                            setTimeout(function() {
+                                try {
+                                    window.close();
+                                    // If window.close() doesn't work (e.g., in some browsers), redirect
+                                    window.location.href = 'http://localhost:8501';
+                                } catch (e) {
+                                    console.error('Error closing window:', e);
+                                    // Final fallback: just redirect
+                                    window.location.href = 'http://localhost:8501';
+                                }
+                            }, 1500);
+                        };
                     </script>
                     <style>
                         body { 
@@ -45,30 +60,59 @@ class GmailHandler:
                             text-align: center; 
                             padding-top: 50px;
                             background-color: #f0f2f6;
+                            margin: 0;
+                            height: 100vh;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
                         }
                         .success { 
                             color: #4CAF50;
                             margin-bottom: 20px;
+                            font-size: 24px;
                         }
                         .message { 
                             margin-top: 20px;
                             color: #666;
+                            font-size: 16px;
                         }
                         .container {
                             background: white;
-                            padding: 30px;
+                            padding: 40px;
                             border-radius: 10px;
                             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
                             max-width: 400px;
-                            margin: 0 auto;
+                            width: 90%;
+                            animation: fadeIn 0.5s ease-out;
+                        }
+                        @keyframes fadeIn {
+                            from { opacity: 0; transform: translateY(20px); }
+                            to { opacity: 1; transform: translateY(0); }
+                        }
+                        .checkmark {
+                            font-size: 48px;
+                            color: #4CAF50;
+                            margin-bottom: 20px;
+                            animation: scaleIn 0.5s ease-out;
+                        }
+                        @keyframes scaleIn {
+                            from { transform: scale(0); }
+                            to { transform: scale(1); }
                         }
                     </style>
                 </head>
                 <body>
                     <div class="container">
-                        <h2 class="success">✓ Authentication Successful!</h2>
+                        <div class="checkmark">✓</div>
+                        <h2 class="success">Authentication Successful!</h2>
                         <p class="message">Redirecting back to application...</p>
                     </div>
+                    <script>
+                        // Force redirect after 3 seconds as a final fallback
+                        setTimeout(function() {
+                            window.location.href = 'http://localhost:8501';
+                        }, 3000);
+                    </script>
                 </body>
             </html>
             """
