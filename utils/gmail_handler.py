@@ -28,9 +28,11 @@ class GmailHandler:
             <head>
                 <title>Authentication Successful</title>
                 <script>
-                    setTimeout(function() {
-                        window.close();
-                    }, 1000);
+                    window.onload = function() {
+                        setTimeout(function() {
+                            window.close();
+                        }, 1000);
+                    }
                 </script>
                 <style>
                     body { font-family: Arial, sans-serif; text-align: center; padding-top: 50px; }
@@ -44,11 +46,7 @@ class GmailHandler:
             </body>
         </html>
         """
-        
-        def success_handler(url):
-            return success_html
-
-        return success_handler
+        return lambda x: success_html
 
     def authenticate(self) -> bool:
         """
@@ -79,13 +77,9 @@ class GmailHandler:
                 if not self.creds:
                     try:
                         flow = InstalledAppFlow.from_client_secrets_file(
-                            'credentials.json', SCOPES)
-                        
-                        # Set up custom success handler
-                        flow.authorization_url()
-                        flow._oauth2session.redirect_uri = 'http://localhost:0'
-                        flow._oauth2session.register_compliance_hook(
-                            'redirect_uri_match', lambda x: 'http://localhost'
+                            'credentials.json', 
+                            SCOPES,
+                            redirect_uri='http://localhost:0'
                         )
                         
                         # Run the local server with custom success page
@@ -107,6 +101,8 @@ class GmailHandler:
                 try:
                     with open('token.pickle', 'wb') as token:
                         pickle.dump(self.creds, token)
+                    # Set secure file permissions
+                    os.chmod('token.pickle', 0o600)
                 except Exception as e:
                     logger.warning(f"Could not save credentials: {str(e)}")
                     # Continue even if saving fails
