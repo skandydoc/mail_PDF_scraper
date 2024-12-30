@@ -8,8 +8,6 @@ import pickle
 from typing import List, Dict, Any
 import logging
 from datetime import datetime
-import webbrowser
-import socket
 
 # Get module logger
 logger = logging.getLogger(__name__)
@@ -62,36 +60,11 @@ class GmailHandler:
                             SCOPES
                         )
                         
-                        # Run the local server with a simple success message
-                        success_html = """
-                        <html>
-                            <head>
-                                <script>
-                                    function closeAndReturn() {
-                                        if (window.opener) {
-                                            window.opener.location.reload();
-                                        }
-                                        window.close();
-                                        window.location.href = 'http://localhost:8501';
-                                    }
-                                    setTimeout(closeAndReturn, 1000);
-                                </script>
-                                <style>
-                                    body { font-family: Arial, sans-serif; text-align: center; padding-top: 50px; }
-                                    .success { color: #4CAF50; }
-                                </style>
-                            </head>
-                            <body>
-                                <h2 class="success">Authentication Successful!</h2>
-                                <p>Redirecting back to application...</p>
-                            </body>
-                        </html>
-                        """
-                        
+                        # Simple local server with minimal HTML
                         self.creds = flow.run_local_server(
                             port=0,  # Let the OS choose an available port
                             authorization_prompt_message='',
-                            success_message=success_html,
+                            success_message='Authentication successful! You may close this window.',
                             open_browser=True
                         )
                         

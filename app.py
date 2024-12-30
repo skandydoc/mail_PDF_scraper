@@ -36,7 +36,6 @@ def initialize_handlers():
     try:
         logger.info("Starting handler initialization")
         gmail_handler = GmailHandler()
-        st.session_state.authentication_state = 'in_progress'
         
         auth_success = gmail_handler.authenticate()
         
@@ -56,15 +55,12 @@ def initialize_handlers():
             )
             
             logger.info(f"Authentication successful for user: {user_info['emailAddress']}")
-            st.session_state.authentication_state = 'completed'
             return True
             
         logger.error("Authentication failed in handler initialization")
-        st.session_state.authentication_state = 'failed'
         return False
     except Exception as e:
         logger.error(f"Error initializing handlers: {str(e)}")
-        st.session_state.authentication_state = 'failed'
         return False
 
 def process_pdf_batch(attachments, folder_id: str, current_keyword: str):
@@ -131,25 +127,15 @@ def main():
     st.write("HIPAA-compliant tool for downloading PDF attachments from Gmail")
 
     # Authentication
-    if not st.session_state.gmail_handler or not st.session_state.user_session:
-        if st.session_state.authentication_state == 'not_started':
-            st.warning("Please authenticate with Google to continue")
-            if st.button("Authenticate"):
-                initialize_handlers()
-                st.rerun()
-        
-        elif st.session_state.authentication_state == 'in_progress':
-            st.info("Authentication in progress... Please complete the authentication in your browser.")
-            with st.spinner("Waiting for authentication to complete..."):
-                time.sleep(0.5)  # Short delay to prevent too frequent reruns
-                st.rerun()
-        
-        elif st.session_state.authentication_state == 'failed':
-            st.error("Authentication failed. Please try again.")
-            if st.button("Retry Authentication"):
-                st.session_state.authentication_state = 'not_started'
-                st.rerun()
-        
+    if 'gmail_handler' not in st.session_state or not st.session_state.gmail_handler:
+        st.warning("Please authenticate with Google to continue")
+        if st.button("Authenticate"):
+            with st.spinner("Authenticating with Google..."):
+                if initialize_handlers():
+                    st.success("Authentication successful!")
+                    st.rerun()
+                else:
+                    st.error("Authentication failed. Please try again.")
         return
 
     # Search Parameters
