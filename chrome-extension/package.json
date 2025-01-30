@@ -5,8 +5,7 @@
   "private": true,
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "mkdir -p dist && zip -r dist/chrome-extension.zip . -x '*.git*' -x 'node_modules/*' -x 'dist/*' -x '*.DS_Store'",
-    "generate-icons": "open icons/generate_icons.html"
+    "build": "mkdir -p dist && zip -r dist/chrome-extension.zip . -x '*.git*' -x 'node_modules/*' -x 'dist/*' -x '*.DS_Store'"
   },
   "keywords": [
     "chrome-extension",
