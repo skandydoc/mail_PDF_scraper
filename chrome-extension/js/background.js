@@ -3,6 +3,10 @@
 class GmailPDFProcessor {
     constructor() {
         this.AUTH_TOKEN = null;
+        this.requestQueue = [];
+        this.isProcessing = false;
+        this.retryAttempts = 3;
+        this.retryDelay = 1000; // 1 second
         this.setupListeners();
         this.setupErrorHandling();
     }
@@ -18,7 +22,7 @@ class GmailPDFProcessor {
                     this.processEmails(request.params).then(sendResponse);
                     return true;
                 case 'downloadPDF':
-                    this.downloadPDF(request.params).then(sendResponse);
+                    this.queueDownload(request.params).then(sendResponse);
                     return true;
             }
         });
@@ -28,13 +32,32 @@ class GmailPDFProcessor {
         // Global error handler
         window.onerror = (message, source, lineno, colno, error) => {
             console.error('Global error:', { message, source, lineno, colno, error });
+            this.handleError(error);
             return false;
         };
 
         // Unhandled promise rejection handler
         window.onunhandledrejection = (event) => {
             console.error('Unhandled promise rejection:', event.reason);
+            this.handleError(event.reason);
         };
+    }
+
+    handleError(error) {
+        // Log error to storage for debugging
+        chrome.storage.local.get(['errorLog'], (result) => {
+            const errorLog = result.errorLog || [];
+            errorLog.push({
+                timestamp: new Date().toISOString(),
+                error: error.message,
+                stack: error.stack
+            });
+            // Keep only last 100 errors
+            if (errorLog.length > 100) {
+                errorLog.shift();
+            }
+            chrome.storage.local.set({ errorLog });
+        });
     }
 
     async authenticate() {
@@ -43,7 +66,7 @@ class GmailPDFProcessor {
             this.AUTH_TOKEN = token;
             return { success: true, token };
         } catch (error) {
-            console.error('Authentication error:', error);
+            this.handleError(error);
             return { success: false, error: error.message };
         }
     }
@@ -66,57 +89,107 @@ class GmailPDFProcessor {
                 throw new Error('Not authenticated');
             }
 
+            if (!keywords || !dateRange) {
+                throw new Error('Missing required parameters');
+            }
+
             // Convert date range to Gmail query format
             const dateQuery = this.convertDateRange(dateRange);
             const query = `has:attachment filename:pdf ${keywords.join(' OR ')} ${dateQuery}`;
 
-            // Fetch emails from Gmail API
-            const emails = await this.searchGmail(query);
+            // Fetch emails from Gmail API with retry logic
+            const emails = await this.retryOperation(() => this.searchGmail(query));
             const attachments = await this.extractAttachments(emails, includePassword);
 
             if (organizeBySender) {
-                return this.organizeAttachmentsBySender(attachments);
+                return { success: true, attachments: this.organizeAttachmentsBySender(attachments) };
             }
 
             return { success: true, attachments };
         } catch (error) {
-            console.error('Process emails error:', error);
+            this.handleError(error);
             return { success: false, error: error.message };
         }
     }
 
+    async retryOperation(operation, attempts = this.retryAttempts) {
+        for (let i = 0; i < attempts; i++) {
+            try {
+                return await operation();
+            } catch (error) {
+                if (i === attempts - 1) throw error;
+                await new Promise(resolve => setTimeout(resolve, this.retryDelay * Math.pow(2, i)));
+            }
+        }
+    }
+
     async searchGmail(query) {
+        if (!query) {
+            throw new Error('Search query cannot be empty');
+        }
+
+        const response = await fetch(
+            `https://www.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${this.AUTH_TOKEN}`,
+                },
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            if (response.status === 429) {
+                throw new Error('Rate limit exceeded. Please try again later.');
+            }
+            throw new Error(`Gmail API error: ${errorData.error?.message || response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.messages || data.messages.length === 0) {
+            return [];
+        }
+
+        // Process in batches to avoid rate limiting
+        const batchSize = 5;
+        const batches = [];
+        for (let i = 0; i < data.messages.length; i += batchSize) {
+            const batch = data.messages.slice(i, i + batchSize);
+            const results = await Promise.all(
+                batch.map(msg => this.getEmailDetails(msg.id))
+            );
+            batches.push(...results);
+            if (i + batchSize < data.messages.length) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay between batches
+            }
+        }
+
+        return batches;
+    }
+
+    async queueDownload(params) {
+        return new Promise((resolve, reject) => {
+            this.requestQueue.push({ params, resolve, reject });
+            this.processQueue();
+        });
+    }
+
+    async processQueue() {
+        if (this.isProcessing || this.requestQueue.length === 0) return;
+
+        this.isProcessing = true;
+        const { params, resolve, reject } = this.requestQueue.shift();
+
         try {
-            if (!query) {
-                throw new Error('Search query cannot be empty');
-            }
-
-            const response = await fetch(
-                `https://www.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${this.AUTH_TOKEN}`,
-                    },
-                }
-            );
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`Gmail API error: ${errorData.error?.message || response.statusText}`);
-            }
-
-            const data = await response.json();
-            
-            if (!data.messages || data.messages.length === 0) {
-                return [];
-            }
-
-            return Promise.all(
-                data.messages.map(msg => this.getEmailDetails(msg.id))
-            );
+            const result = await this.downloadPDF(params);
+            resolve(result);
         } catch (error) {
-            console.error('Search Gmail error:', error);
-            throw error;
+            reject(error);
+        } finally {
+            this.isProcessing = false;
+            // Process next item in queue after a delay
+            setTimeout(() => this.processQueue(), 1000);
         }
     }
 
@@ -274,8 +347,23 @@ class GmailPDFProcessor {
     }
 
     sanitizeFilename(filename) {
-        // Remove invalid characters from filename
-        return filename.replace(/[<>:"/\\|?*]/g, '_');
+        // Remove invalid characters and limit length
+        const sanitized = filename.replace(/[<>:"/\\|?*]/g, '_');
+        return sanitized.length > 255 ? sanitized.slice(0, 255) : sanitized;
+    }
+
+    validatePDF(arrayBuffer) {
+        // Check PDF magic number
+        const signature = new Uint8Array(arrayBuffer.slice(0, 5));
+        const isPDF = signature[0] === 0x25 && // %
+                     signature[1] === 0x50 && // P
+                     signature[2] === 0x44 && // D
+                     signature[3] === 0x46 && // F
+                     signature[4] === 0x2D;   // -
+        if (!isPDF) {
+            throw new Error('Invalid PDF file');
+        }
+        return true;
     }
 }
 
