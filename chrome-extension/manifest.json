@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Gmail PDF Processor",
+  "version": "1.0",
+  "description": "Process and organize PDF attachments from Gmail",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "downloads",
+    "identity",
+    "identity.email"
+  ],
+  "host_permissions": [
+    "https://mail.google.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "js/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["js/content.js"],
+      "css": ["css/styles.css"]
+    }
+  ],
+  "oauth2": {
+    "client_id": "${YOUR_CLIENT_ID}.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/drive.file"
+    ]
+  }
+} 

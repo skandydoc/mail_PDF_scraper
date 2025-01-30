@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -15,7 +16,6 @@ lib64/
 parts/
 sdist/
 var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -23,8 +23,6 @@ wheels/
 # Virtual Environment
 venv/
 ENV/
-env/
-.env
 
 # IDE
 .idea/
@@ -32,11 +30,35 @@ env/
 *.swp
 *.swo
 
-# Application specific
-token.pickle
-credentials.json
-audit_logs/
+# OS
+.DS_Store
+Thumbs.db
+
+# Application Specific
+.env
+.session.key
 *.log
+logs/
+temp/
+tmp/
+
+# Chrome Extension Specific
+*.pem
+*.crx
+chrome-extension.zip
+node_modules/
+oauth2.keys.json
+client_secret*.json
+credentials.json
+token.json
+.config.json
+
+# Security
+*.key
+*.crt
+*.csr
+*.pem
+secrets/
 
 # Audit logs
 audit_logs/
