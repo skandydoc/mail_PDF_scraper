@@ -111,7 +111,7 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str, passwor
             
             if file_data:
                 # Process PDF with passwords if provided
-                processed_data, needs_password, error_msg = st.session_state.pdf_handler.process_pdf(
+                processed_data, needs_password, error_msg, transactions = st.session_state.pdf_handler.process_pdf(
                     file_data,
                     current_keyword,  # Use keyword as group key for password caching
                     passwords,
@@ -151,6 +151,19 @@ def process_pdf_batch(attachments, folder_id: str, current_keyword: str, passwor
                     processed_filenames.append(new_filename)  # Track processed filename
                     logger.info(f"Successfully processed and uploaded: {new_filename}")
                     
+                    # Write transactions to sheet if available
+                    if transactions and st.session_state.spreadsheet_id:
+                        try:
+                            st.session_state.sheets_handler.write_transactions(
+                                st.session_state.spreadsheet_id,
+                                current_keyword,
+                                transactions,
+                                new_filename
+                            )
+                            logger.info(f"Successfully wrote transactions for: {new_filename}")
+                        except Exception as e:
+                            logger.error(f"Error writing transactions for {new_filename}: {str(e)}")
+                    
                     # Log successful upload
                     st.session_state.security.log_activity(
                         st.session_state.gmail_handler.service.users().getProfile(userId='me').execute()['emailAddress'],
@@ -181,7 +194,7 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
     """Process a batch of attachments for a specific keyword"""
     try:
         if not attachments:
-            return 0, [], processed_files, [], ""
+            return 0, [], processed_files, [], "", []
             
         # Create subfolder for keyword
         keyword_folder_name = f"{keyword.strip()}_files"
@@ -192,22 +205,22 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
         
         if not keyword_folder_id:
             st.error(f"Failed to create folder for keyword: {keyword}")
-            return 0, [], processed_files, [], ""
+            return 0, [], processed_files, [], "", []
             
         # Process files
-        success_count, password_required, updated_processed_files, processed_filenames = process_pdf_batch(
+        success_count, password_required, updated_processed_files, processed_filenames, error_files = process_pdf_batch(
             attachments,
             keyword_folder_id,
             keyword,
-            password,
+            [password] if password else None,
             processed_files
         )
         
-        return success_count, password_required, updated_processed_files, processed_filenames, keyword_folder_name
+        return success_count, password_required, updated_processed_files, processed_filenames, keyword_folder_name, error_files
         
     except Exception as e:
         logger.error(f"Error processing keyword batch {keyword}: {str(e)}")
-        return 0, [], processed_files, [], ""
+        return 0, [], processed_files, [], "", []
 
 def initialize_handlers():
     """Initialize Gmail and Drive handlers with authentication"""

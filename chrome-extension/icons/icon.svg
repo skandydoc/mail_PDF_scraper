@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-    <!-- Background -->
-    <rect width="128" height="128" fill="#4285f4" rx="16" ry="16"/>
-    <!-- PDF text as paths for better compatibility -->
-    <path d="M30 64 V40 H45 Q55 40 55 52 Q55 64 45 64 H30 M30 52 H43 Q47 52 47 46 Q47 40 43 40 H38 V64" fill="white"/>
-    <path d="M60 64 V40 H75 Q85 40 85 52 Q85 64 75 64 H60 M60 58 H73 Q77 58 77 52 Q77 46 73 46 H68 V64" fill="white"/>
-    <path d="M90 64 V40 H105 L108 46 L111 40 H126 V64 H118 V48 L114 56 H102 L98 48 V64" fill="white"/>
-</svg> 
