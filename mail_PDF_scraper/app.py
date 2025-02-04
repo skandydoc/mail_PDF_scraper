@@ -286,10 +286,17 @@ def initialize_handlers():
                     logger.info("Drive handler verified")
                 
                 # Initialize Sheets handler
-                st.session_state.sheets_handler = SheetsHandler(gmail_handler.creds)
-                if not st.session_state.sheets_handler.ensure_initialized():
-                    raise Exception("Failed to initialize Google Sheets handler")
-                logger.info("Sheets handler verified")
+                try:
+                    st.session_state.sheets_handler = SheetsHandler(gmail_handler.creds)
+                    if not st.session_state.sheets_handler.ensure_initialized():
+                        raise Exception("Failed to initialize Google Sheets handler")
+                    logger.info("Sheets handler verified")
+                except Exception as sheets_error:
+                    if "Google Sheets API is not enabled" in str(sheets_error):
+                        st.error(str(sheets_error))
+                        st.info("After enabling the API, please wait a few minutes and try signing in again.")
+                        return False
+                    raise sheets_error
                 
                 # Create secure session
                 user_info = gmail_handler.service.users().getProfile(userId='me').execute()

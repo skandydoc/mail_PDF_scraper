@@ -1,110 +1,100 @@
-# Gmail PDF Processor
+# Gmail PDF Attachment Processor
 
-A secure and efficient tool for processing PDF attachments from Gmail, with support for transaction extraction and organization.
+A secure tool for downloading and organizing PDF attachments from Gmail, with support for transaction extraction and Google Sheets integration.
 
 Composed with Cursor - Use with Discretion. AI hallucinations and potential errors are possible.
 
 ## Features
 
-- Secure Gmail authentication using OAuth2
-- PDF attachment download and processing
-- Smart organization of files in Google Drive
-- Transaction extraction from PDFs
-- Google Sheets integration for transaction tracking
+- Secure Gmail integration with OAuth2 authentication
+- PDF attachment download and organization
+- Transaction extraction from PDF statements
+- Google Sheets integration for transaction data
+- Folder-based organization in Google Drive
 - Password-protected PDF support
-- Audit logging and security features
-- Two-phase processing:
-  1. Email Processing & PDF Storage
-  2. Transaction Extraction
+- Search by keywords or content
+- Batch processing capabilities
 
-## Installation
+## Prerequisites
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/mail_PDF_scraper.git
-cd mail_PDF_scraper
-```
+1. Python 3.8 or higher
+2. Google Cloud Project with the following APIs enabled:
+   - Gmail API
+   - Google Drive API
+   - Google Sheets API
 
-2. Create and activate a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+## Setup Instructions
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+1. **Create a Google Cloud Project**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com)
+   - Create a new project or select an existing one
+   - Enable the required APIs:
+     - [Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com)
+     - [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)
+     - [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com)
 
-4. Set up Google Cloud Project and obtain credentials:
-   - Create a project in Google Cloud Console
-   - Enable Gmail, Drive, and Sheets APIs
-   - Create OAuth2 credentials
-   - Download credentials as `credentials.json`
+2. **Configure OAuth Consent Screen**:
+   - Go to "OAuth consent screen" in the Google Cloud Console
+   - Configure the consent screen (Internal or External)
+   - Add the required scopes:
+     - `https://www.googleapis.com/auth/gmail.readonly`
+     - `https://www.googleapis.com/auth/drive.file`
+     - `https://www.googleapis.com/auth/spreadsheets`
 
-5. Configure Streamlit:
-```bash
-mkdir -p .streamlit
-echo 'browser.gatherUsageStats = false' > .streamlit/config.toml
-```
+3. **Create OAuth 2.0 Credentials**:
+   - Go to "Credentials" in the Google Cloud Console
+   - Create OAuth 2.0 Client ID credentials
+   - Download the credentials and save as `credentials.json` in the project root
+
+4. **Set Up Python Environment**:
+   ```bash
+   # Create virtual environment
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+   # Install dependencies
+   pip install -r requirements.txt
+   ```
+
+5. **Configure Streamlit**:
+   ```bash
+   mkdir -p ~/.streamlit
+   echo 'browser.gatherUsageStats = false' > ~/.streamlit/config.toml
+   ```
 
 ## Usage
 
-You can run the application in two ways:
+1. Start the application:
+   ```bash
+   streamlit run app.py
+   ```
 
-1. Using the convenience script (recommended):
-```bash
-./run.sh
-```
+2. Sign in with your Google account when prompted
 
-2. Or manually:
-```bash
-cd mail_PDF_scraper
-streamlit run app.py
-```
+3. Use Phase 1 to:
+   - Search for emails with PDF attachments
+   - Download and organize PDFs in Google Drive
 
-After starting the application:
-1. Open the URL shown in your terminal (typically http://localhost:8501)
-2. Authenticate with your Google account
-3. Select operation phase:
-   - Phase 1: Process emails and store PDFs
-   - Phase 2: Extract transactions from stored PDFs
-4. Follow the UI prompts for each phase
-
-## Project Structure
-
-```
-mail_PDF_scraper/
-├── app.py                    # Main application file
-├── run.sh                    # Convenience script to run the app
-├── requirements.txt          # Python dependencies
-├── credentials.json          # Google OAuth credentials
-├── utils/                    # Utility modules
-│   ├── gmail_handler.py      # Gmail API integration
-│   ├── drive_handler.py      # Google Drive integration
-│   ├── sheets_handler.py     # Google Sheets integration
-│   ├── pdf_handler.py        # PDF processing
-│   ├── security.py          # Security features
-│   └── logger_config.py     # Logging configuration
-├── logs/                    # Application logs
-├── audit_logs/             # Security audit logs
-└── .streamlit/             # Streamlit configuration
-```
+4. Use Phase 2 to:
+   - Extract transactions from organized PDFs
+   - View and analyze transaction data in Google Sheets
 
 ## Security Features
 
-- OAuth2 authentication
+- OAuth 2.0 authentication
 - Secure credential handling
-- Audit logging
 - Session management
+- Audit logging
 - Password handling for protected PDFs
 
 ## Error Handling
 
-- Comprehensive error logging
-- User-friendly error messages
-- Graceful failure recovery
-- Transaction validation
+If you encounter the "Google Sheets API not enabled" error:
+1. Go to [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com)
+2. Select your project
+3. Click 'Enable'
+4. Wait a few minutes for the change to propagate
+5. Sign out and sign back in to the application
 
 ## Contributing
 
@@ -119,8 +109,8 @@ This project is licensed under CC BY-SA NC 4.0 (Creative Commons Attribution-Sha
 - Google Cloud Platform
 - Streamlit
 - PyPDF2
-- Python community
+- Google API Python Client
 
 ## Support
 
-For support, please open an issue in the GitHub repository or contact the maintainers.
+For support or feature requests, please visit our GitHub repository.

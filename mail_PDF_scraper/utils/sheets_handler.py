@@ -3,6 +3,7 @@ from googleapiclient.discovery import build
 from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime
+from googleapiclient.errors import HttpError
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -17,14 +18,28 @@ class SheetsHandler:
         try:
             self.service = build('sheets', 'v4', credentials=credentials)
             # Test the service by trying to access the spreadsheets API
-            self.service.spreadsheets().get(spreadsheetId='dummy').execute()
+            try:
+                self.service.spreadsheets().get(spreadsheetId='dummy').execute()
+            except HttpError as e:
+                if 'SERVICE_DISABLED' in str(e):
+                    logger.error("Google Sheets API is not enabled")
+                    raise Exception(
+                        "Google Sheets API is not enabled. Please:\n"
+                        "1. Go to https://console.cloud.google.com/apis/library/sheets.googleapis.com\n"
+                        "2. Select your project\n"
+                        "3. Click 'Enable'\n"
+                        "4. Wait a few minutes for the change to propagate\n"
+                        "5. Sign out and sign back in to the application"
+                    )
+                elif 'Invalid spreadsheet ID' in str(e):
+                    # This is expected - it means the service is working
+                    logger.info("Sheets handler initialized successfully")
+                else:
+                    logger.error(f"Error testing sheets handler: {str(e)}")
+                    raise Exception(f"Failed to initialize sheets handler: {str(e)}")
         except Exception as e:
-            if 'Invalid spreadsheet ID' in str(e):
-                # This is expected - it means the service is working
-                logger.info("Sheets handler initialized successfully")
-            else:
-                logger.error(f"Error initializing sheets handler: {str(e)}")
-                raise Exception(f"Failed to initialize sheets handler: {str(e)}")
+            logger.error(f"Error initializing sheets handler: {str(e)}")
+            raise
         
     def verify_initialization(self) -> bool:
         """Verify that the handler is properly initialized"""
