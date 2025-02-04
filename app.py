@@ -712,6 +712,8 @@ def main():
             st.session_state.selected_content_attachments = set()
         if 'main_folder_name' not in st.session_state:
             st.session_state.main_folder_name = "PDF Processor Output"
+        if 'processing_complete' not in st.session_state:
+            st.session_state.processing_complete = False
         
         logger.info("Application started")
         
@@ -755,16 +757,16 @@ def main():
                                 st.rerun()
             return
 
-        # Configuration Section
-        with st.expander("Configuration", expanded=True):
-            # Main folder name input
-            st.session_state.main_folder_name = st.text_input(
-                "Enter main Google Drive folder name",
-                value=st.session_state.main_folder_name,
-                help="This will be the main folder where all processed files will be organized",
-                key="main_folder_input"
-            )
+        # Main folder name input - outside Configuration expander
+        st.session_state.main_folder_name = st.text_input(
+            "Enter main Google Drive folder name",
+            value=st.session_state.main_folder_name,
+            help="This will be the main folder where all processed files will be organized",
+            key="main_folder_input"
+        )
 
+        # Configuration Section
+        with st.expander("Search Configuration", expanded=True):
             # Search Parameters
             st.subheader("Search Parameters")
             keywords = st.text_area(
@@ -804,31 +806,38 @@ def main():
 
         if search_button:
             with st.spinner("Searching emails..."):
-                emails = st.session_state.gmail_handler.search_emails(keywords)
-                if not emails:
-                    st.warning("No emails found with PDF attachments matching the keywords")
+                try:
+                    emails = st.session_state.gmail_handler.search_emails(keywords)
+                    if not emails:
+                        st.warning("No emails found with PDF attachments matching the keywords")
+                        return
+                    
+                    st.session_state.search_results = emails
+                    st.success(f"Found {len(emails)} emails with PDF attachments")
+                    
+                    # Clear previous matches
+                    st.session_state.exact_matches_by_keyword = {}
+                    st.session_state.content_matches_by_sender = {}
+                    st.session_state.processing_complete = False
+                    
+                    # Group matches by type and keyword/sender
+                    for email in emails:
+                        if email['match_type'] == 'exact':
+                            # Find matching keyword
+                            matching_keyword = next((k for k in keywords if k.lower() in email['subject'].lower()), 'Other')
+                            if matching_keyword not in st.session_state.exact_matches_by_keyword:
+                                st.session_state.exact_matches_by_keyword[matching_keyword] = []
+                            st.session_state.exact_matches_by_keyword[matching_keyword].append(email)
+                        else:
+                            sender_key = f"{email.get('sender_email', 'unknown')}"
+                            if sender_key not in st.session_state.content_matches_by_sender:
+                                st.session_state.content_matches_by_sender[sender_key] = []
+                            st.session_state.content_matches_by_sender[sender_key].append(email)
+                    st.rerun()
+                except Exception as e:
+                    logger.error(f"Error during email search: {str(e)}")
+                    st.error(f"An error occurred while searching emails: {str(e)}")
                     return
-                
-                st.session_state.search_results = emails
-                st.success(f"Found {len(emails)} emails with PDF attachments")
-                
-                # Clear previous matches
-                st.session_state.exact_matches_by_keyword = {}
-                st.session_state.content_matches_by_sender = {}
-                
-                # Group matches by type and keyword/sender
-                for email in emails:
-                    if email['match_type'] == 'exact':
-                        # Find matching keyword
-                        matching_keyword = next((k for k in keywords if k.lower() in email['subject'].lower()), 'Other')
-                        if matching_keyword not in st.session_state.exact_matches_by_keyword:
-                            st.session_state.exact_matches_by_keyword[matching_keyword] = []
-                        st.session_state.exact_matches_by_keyword[matching_keyword].append(email)
-                    else:
-                        sender_key = f"{email.get('sender_email', 'unknown')}"
-                        if sender_key not in st.session_state.content_matches_by_sender:
-                            st.session_state.content_matches_by_sender[sender_key] = []
-                        st.session_state.content_matches_by_sender[sender_key].append(email)
 
         # Display Results and Select Attachments
         if 'search_results' in st.session_state:
@@ -922,29 +931,35 @@ def main():
                 st.subheader("Process Selected Files")
                 
                 # Get selected attachments
-                for keyword in st.session_state.exact_matches_by_keyword:
-                    keyword_key = f"selected_exact_{keyword}"
-                    if keyword_key in st.session_state:
-                        selected_exact_attachments.extend([
-                            att for att in keyword_attachments 
-                            if att['id'] in st.session_state[keyword_key]
-                        ])
-                
-                for sender in st.session_state.content_matches_by_sender:
-                    sender_key = f"selected_content_{sender}"
-                    if sender_key in st.session_state:
-                        selected_content_attachments.extend([
-                            att for att in sender_attachments 
-                            if att['id'] in st.session_state[sender_key]
-                        ])
-                
-                # Show selection summary
-                show_selection_summary()
-                
-                # Process Selected Files button - centered and prominent
-                col1, col2, col3 = st.columns([2, 1, 2])
-                with col2:
-                    if st.button("Process Selected Files", key="process_files_button", type="primary", use_container_width=True):
+                try:
+                    for keyword in st.session_state.exact_matches_by_keyword:
+                        keyword_key = f"selected_exact_{keyword}"
+                        if keyword_key in st.session_state:
+                            selected_exact_attachments.extend([
+                                att for att in keyword_attachments 
+                                if att['id'] in st.session_state[keyword_key]
+                            ])
+                    
+                    for sender in st.session_state.content_matches_by_sender:
+                        sender_key = f"selected_content_{sender}"
+                        if sender_key in st.session_state:
+                            selected_content_attachments.extend([
+                                att for att in sender_attachments 
+                                if att['id'] in st.session_state[sender_key]
+                            ])
+                    
+                    # Show selection summary
+                    show_selection_summary()
+                    
+                    # Process Selected Files button - centered and prominent
+                    col1, col2, col3 = st.columns([2, 1, 2])
+                    with col2:
+                        if st.button("Process Selected Files", key="process_files_button", type="primary", use_container_width=True):
+                            st.session_state.processing_started = True
+                            st.rerun()
+                    
+                    # Handle processing in a separate block to avoid streamlit async issues
+                    if st.session_state.get('processing_started', False) and not st.session_state.get('processing_complete', False):
                         with st.spinner("Processing files..."):
                             try:
                                 results_by_group = {}
@@ -960,7 +975,7 @@ def main():
                                         success_count, password_required, processed_files, processed_filenames, folder_path, error_files = process_keyword_batch(
                                             keyword,
                                             keyword_attachments,
-                                            None,  # parent_folder_id is not needed anymore
+                                            None,
                                             working_password,
                                             processed_files
                                         )
@@ -984,7 +999,7 @@ def main():
                                         success_count, password_required, processed_files, processed_filenames, folder_path, error_files = process_keyword_batch(
                                             f"content_matches_{sender}",
                                             sender_attachments,
-                                            None,  # parent_folder_id is not needed anymore
+                                            None,
                                             working_password,
                                             processed_files
                                         )
@@ -998,15 +1013,28 @@ def main():
                                             'error_files': error_files
                                         }
                                 
-                                # Show final status
-                                show_final_status(results_by_group)
-                                
-                                # Show detailed results
-                                show_processing_results(results_by_group)
+                                st.session_state.results_by_group = results_by_group
+                                st.session_state.processing_complete = True
+                                st.session_state.processing_started = False
+                                st.rerun()
                                 
                             except Exception as e:
                                 logger.error(f"Error in batch processing: {str(e)}")
                                 st.error(f"An error occurred during processing: {str(e)}")
+                                st.session_state.processing_complete = True
+                                st.session_state.processing_started = False
+                    
+                    # Show results after processing is complete
+                    if st.session_state.get('processing_complete', False) and hasattr(st.session_state, 'results_by_group'):
+                        # Show final status
+                        show_final_status(st.session_state.results_by_group)
+                        
+                        # Show detailed results
+                        show_processing_results(st.session_state.results_by_group)
+                
+                except Exception as e:
+                    logger.error(f"Error handling selected files: {str(e)}")
+                    st.error(f"An error occurred while handling selected files: {str(e)}")
 
     except Exception as e:
         logger.error(f"Error in main function: {str(e)}")
