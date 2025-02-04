@@ -39,33 +39,37 @@ class SheetsHandler:
             logger.error(f"Error creating spreadsheet: {str(e)}")
             return None
 
-    def create_sheet(self, spreadsheet_id: str, title: str) -> Optional[int]:
-        """
-        Create a new sheet in an existing spreadsheet
-        Args:
-            spreadsheet_id: ID of the spreadsheet
-            title: Title of the new sheet
-        Returns:
-            int: Sheet ID if successful, None otherwise
-        """
+    def create_sheet(self, spreadsheet_id: str, sheet_name: str) -> bool:
+        """Create a new sheet in the spreadsheet"""
         try:
+            # Check if sheet already exists
+            sheet_metadata = self.service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheets = sheet_metadata.get('sheets', [])
+            for sheet in sheets:
+                if sheet['properties']['title'] == sheet_name:
+                    return True  # Sheet already exists
+            
+            # Create new sheet
             body = {
                 'requests': [{
                     'addSheet': {
                         'properties': {
-                            'title': title
+                            'title': sheet_name
                         }
                     }
                 }]
             }
-            response = self.service.spreadsheets().batchUpdate(
+            
+            self.service.spreadsheets().batchUpdate(
                 spreadsheetId=spreadsheet_id,
                 body=body
             ).execute()
-            return response['replies'][0]['addSheet']['properties']['sheetId']
+            
+            return True
+            
         except Exception as e:
-            logger.error(f"Error creating sheet: {str(e)}")
-            return None
+            logger.error(f"Error creating sheet {sheet_name}: {str(e)}")
+            return False
 
     def write_transactions(self, spreadsheet_id: str, sheet_name: str, 
                          transactions: List[Dict[str, Any]], file_name: str) -> bool:
@@ -241,4 +245,203 @@ class SheetsHandler:
             
         except Exception as e:
             logger.error(f"Error writing transactions: {str(e)}")
+            return False
+
+    def write_transactions_with_formatting(self, spreadsheet_id: str, sheet_name: str, transactions: list) -> bool:
+        """Write transactions to sheet with formatting"""
+        try:
+            if not transactions:
+                return True
+            
+            # Group transactions by source file
+            transactions_by_file = {}
+            for trans in transactions:
+                source_file = trans.get('Source File', 'Unknown')
+                if source_file not in transactions_by_file:
+                    transactions_by_file[source_file] = []
+                transactions_by_file[source_file].append(trans)
+            
+            # Prepare header row
+            headers = [
+                'Date', 'Description', 'Amount', 'Type', 'Category',
+                'Card Number', 'Bank Name', 'Card Type', 'Source File'
+            ]
+            
+            # Get sheet ID
+            sheet_metadata = self.service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheet_id = None
+            for sheet in sheet_metadata.get('sheets', []):
+                if sheet['properties']['title'] == sheet_name:
+                    sheet_id = sheet['properties']['sheetId']
+                    break
+            
+            if not sheet_id:
+                logger.error(f"Sheet {sheet_name} not found")
+                return False
+            
+            # Clear existing content
+            range_name = f"{sheet_name}!A1:Z"
+            self.service.spreadsheets().values().clear(
+                spreadsheetId=spreadsheet_id,
+                range=range_name
+            ).execute()
+            
+            # Write headers
+            header_range = f"{sheet_name}!A1:I1"
+            self.service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=header_range,
+                valueInputOption='RAW',
+                body={'values': [headers]}
+            ).execute()
+            
+            # Format headers
+            header_format = {
+                'requests': [{
+                    'repeatCell': {
+                        'range': {
+                            'sheetId': sheet_id,
+                            'startRowIndex': 0,
+                            'endRowIndex': 1,
+                            'startColumnIndex': 0,
+                            'endColumnIndex': len(headers)
+                        },
+                        'cell': {
+                            'userEnteredFormat': {
+                                'backgroundColor': {'red': 0.8, 'green': 0.8, 'blue': 0.8},
+                                'textFormat': {'bold': True},
+                                'horizontalAlignment': 'CENTER'
+                            }
+                        },
+                        'fields': 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
+                    }
+                }]
+            }
+            
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body=header_format
+            ).execute()
+            
+            # Write transactions file by file
+            current_row = 2  # Start after header
+            
+            for source_file, file_transactions in transactions_by_file.items():
+                # Write file name with pastel green background
+                file_range = f"{sheet_name}!A{current_row}"
+                self.service.spreadsheets().values().update(
+                    spreadsheetId=spreadsheet_id,
+                    range=file_range,
+                    valueInputOption='RAW',
+                    body={'values': [[source_file]]}
+                ).execute()
+                
+                # Format file name row
+                file_format = {
+                    'requests': [{
+                        'repeatCell': {
+                            'range': {
+                                'sheetId': sheet_id,
+                                'startRowIndex': current_row - 1,
+                                'endRowIndex': current_row,
+                                'startColumnIndex': 0,
+                                'endColumnIndex': len(headers)
+                            },
+                            'cell': {
+                                'userEnteredFormat': {
+                                    'backgroundColor': {'red': 0.9, 'green': 1.0, 'blue': 0.9},
+                                    'textFormat': {'bold': True},
+                                    'horizontalAlignment': 'LEFT'
+                                }
+                            },
+                            'fields': 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
+                        }
+                    }]
+                }
+                
+                self.service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body=file_format
+                ).execute()
+                
+                current_row += 1
+                
+                # Write transactions
+                values = []
+                for trans in file_transactions:
+                    values.append([
+                        trans.get('Date', ''),
+                        trans.get('Description', ''),
+                        trans.get('Amount', ''),
+                        trans.get('Type', ''),
+                        trans.get('Category', ''),
+                        trans.get('Card Number', ''),
+                        trans.get('Bank Name', ''),
+                        trans.get('Card Type', ''),
+                        trans.get('Source File', '')
+                    ])
+                
+                if values:
+                    data_range = f"{sheet_name}!A{current_row}:I{current_row + len(values) - 1}"
+                    self.service.spreadsheets().values().update(
+                        spreadsheetId=spreadsheet_id,
+                        range=data_range,
+                        valueInputOption='RAW',
+                        body={'values': values}
+                    ).execute()
+                    
+                    current_row += len(values)
+                
+                # Add spacing rows with light background
+                for _ in range(3):
+                    spacing_format = {
+                        'requests': [{
+                            'repeatCell': {
+                                'range': {
+                                    'sheetId': sheet_id,
+                                    'startRowIndex': current_row - 1,
+                                    'endRowIndex': current_row,
+                                    'startColumnIndex': 0,
+                                    'endColumnIndex': len(headers)
+                                },
+                                'cell': {
+                                    'userEnteredFormat': {
+                                        'backgroundColor': {'red': 0.95, 'green': 1.0, 'blue': 0.95}
+                                    }
+                                },
+                                'fields': 'userEnteredFormat(backgroundColor)'
+                            }
+                        }]
+                    }
+                    
+                    self.service.spreadsheets().batchUpdate(
+                        spreadsheetId=spreadsheet_id,
+                        body=spacing_format
+                    ).execute()
+                    
+                    current_row += 1
+            
+            # Auto-resize columns
+            auto_resize = {
+                'requests': [{
+                    'autoResizeDimensions': {
+                        'dimensions': {
+                            'sheetId': sheet_id,
+                            'dimension': 'COLUMNS',
+                            'startIndex': 0,
+                            'endIndex': len(headers)
+                        }
+                    }
+                }]
+            }
+            
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body=auto_resize
+            ).execute()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error writing transactions to sheet: {str(e)}")
             return False 

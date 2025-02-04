@@ -1304,14 +1304,155 @@ def main():
                                 help="Start processing the selected folders",
                                 key="process_selected_folders"
                             ):
-                                # Get selected folder info
-                                selected_folder_info = [
-                                    next(f for f in st.session_state.folder_options if f['display_name'] == folder_name)
-                                    for folder_name in st.session_state.selected_folders
-                                ]
-                                st.session_state.selected_folder_info = selected_folder_info
-                                st.session_state.processing_started = True
-                                st.rerun()
+                                try:
+                                    # Verify sheets handler is initialized
+                                    if not hasattr(st.session_state, 'sheets_handler') or not st.session_state.sheets_handler:
+                                        st.error("Google Sheets handler is not initialized. Please try signing out and signing back in.")
+                                        return
+                                    
+                                    # Create or get spreadsheet
+                                    if not hasattr(st.session_state, 'spreadsheet_id') or not st.session_state.spreadsheet_id:
+                                        try:
+                                            st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("Credit Card Transactions")
+                                            if not st.session_state.spreadsheet_id:
+                                                st.error("Failed to create Google Sheet for transactions. Please check your permissions.")
+                                                return
+                                        except Exception as e:
+                                            logger.error(f"Error creating spreadsheet: {str(e)}")
+                                            st.error(f"Failed to create spreadsheet: {str(e)}")
+                                            return
+                                    
+                                    # Get selected folder info
+                                    selected_folder_info = [
+                                        next(f for f in st.session_state.folder_options if f['display_name'] == folder_name)
+                                        for folder_name in st.session_state.selected_folders
+                                    ]
+                                    
+                                    total_files = 0
+                                    processed_files = 0
+                                    
+                                    # Create a container for folder processing status
+                                    status_container = st.container()
+                                    
+                                    # Process each selected folder
+                                    for folder_info in selected_folder_info:
+                                        with status_container:
+                                            # Create an expander for each folder
+                                            with st.expander(f"📁 {folder_info['display_name']}", expanded=True):
+                                                # Show folder path and details
+                                                st.markdown(f"""
+                                                **Processing Folder:**
+                                                - Path: `{folder_info['path']}`
+                                                - Name: `{folder_info['name']}`
+                                                """)
+                                                
+                                                # Get PDFs in folder
+                                                pdfs = st.session_state.drive_handler.list_files(folder_info['id'], file_type='application/pdf')
+                                                if pdfs:
+                                                    total_files += len(pdfs)
+                                                    st.info(f"Found {len(pdfs)} PDF files")
+                                                    
+                                                    # Create progress bar for this folder
+                                                    progress_bar = st.progress(0)
+                                                    status_text = st.empty()
+                                                    
+                                                    # Create columns for file status
+                                                    col1, col2 = st.columns([3, 1])
+                                                    with col1:
+                                                        file_status = st.empty()
+                                                    with col2:
+                                                        count_status = st.empty()
+                                                    
+                                                    folder_processed = 0
+                                                    transactions_data = []
+                                                    
+                                                    for idx, pdf in enumerate(pdfs):
+                                                        try:
+                                                            # Update progress
+                                                            progress = (idx + 1) / len(pdfs)
+                                                            progress_bar.progress(progress)
+                                                            status_text.text(f"Processing file {idx + 1} of {len(pdfs)}")
+                                                            
+                                                            # Download PDF
+                                                            file_data = st.session_state.drive_handler.download_file(pdf['id'])
+                                                            if file_data:
+                                                                # Extract transactions
+                                                                bank_name, card_type, card_number, transactions = st.session_state.pdf_handler.process_pdf(
+                                                                    file_data,
+                                                                    folder_info['name'],
+                                                                    None,
+                                                                    None
+                                                                )
+                                                                
+                                                                if transactions:
+                                                                    # Add file info to transactions
+                                                                    file_transactions = []
+                                                                    for trans in transactions:
+                                                                        trans['Source File'] = pdf['name']
+                                                                        trans['Bank Name'] = bank_name
+                                                                        trans['Card Type'] = card_type
+                                                                        trans['Card Number'] = card_number
+                                                                        file_transactions.append(trans)
+                                                                    
+                                                                    transactions_data.extend(file_transactions)
+                                                                    folder_processed += 1
+                                                                    file_status.markdown(f"✅ Processed: `{pdf['name']}`")
+                                                                else:
+                                                                    file_status.markdown(f"⚠️ No transactions found in: `{pdf['name']}`")
+                                                                
+                                                                # Update count
+                                                                count_status.markdown(f"**{folder_processed}/{len(pdfs)}**")
+                                                        
+                                                        except Exception as e:
+                                                            logger.error(f"Error processing file {pdf['name']}: {str(e)}")
+                                                            file_status.markdown(f"❌ Error processing `{pdf['name']}`: {str(e)}")
+                                                    
+                                                    # Write transactions to sheet
+                                                    if transactions_data:
+                                                        try:
+                                                            # Create or get sheet for this folder
+                                                            sheet_name = folder_info['name'][:100]  # Sheets API has 100 char limit
+                                                            st.session_state.sheets_handler.create_sheet(
+                                                                st.session_state.spreadsheet_id,
+                                                                sheet_name
+                                                            )
+                                                            
+                                                            # Write transactions with formatting
+                                                            success = st.session_state.sheets_handler.write_transactions_with_formatting(
+                                                                st.session_state.spreadsheet_id,
+                                                                sheet_name,
+                                                                transactions_data
+                                                            )
+                                                            
+                                                            if success:
+                                                                processed_files += folder_processed
+                                                                st.success(f"Successfully wrote {len(transactions_data)} transactions to sheet")
+                                                            else:
+                                                                st.error("Failed to write transactions to sheet")
+                                                        
+                                                        except Exception as e:
+                                                            logger.error(f"Error writing to sheet: {str(e)}")
+                                                            st.error(f"Error writing to sheet: {str(e)}")
+                                                    
+                                                    # Show folder summary
+                                                    if folder_processed > 0:
+                                                        st.success(f"Successfully processed {folder_processed} out of {len(pdfs)} files")
+                                                    else:
+                                                        st.warning("No files were processed successfully in this folder")
+                                                else:
+                                                    st.warning("No PDF files found in this folder")
+                                    
+                                    # Show final results
+                                    if processed_files > 0:
+                                        st.success(f"Total: Successfully processed {processed_files} out of {total_files} files")
+                                        sheet_url = f"https://docs.google.com/spreadsheets/d/{st.session_state.spreadsheet_id}"
+                                        st.markdown(f"[View all transactions in Google Sheets]({sheet_url})")
+                                    else:
+                                        st.warning("No files were processed successfully")
+                                
+                                except Exception as e:
+                                    logger.error(f"Error during transaction extraction: {str(e)}")
+                                    st.error(f"An error occurred: {str(e)}")
                     else:
                         st.warning("Please select at least one folder to process")
                 else:
