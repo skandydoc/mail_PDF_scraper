@@ -14,8 +14,31 @@ class SheetsHandler:
         Args:
             credentials: Google OAuth2 credentials
         """
-        self.service = build('sheets', 'v4', credentials=credentials)
+        try:
+            self.service = build('sheets', 'v4', credentials=credentials)
+            # Test the service by trying to access the spreadsheets API
+            self.service.spreadsheets().get(spreadsheetId='dummy').execute()
+        except Exception as e:
+            if 'Invalid spreadsheet ID' in str(e):
+                # This is expected - it means the service is working
+                logger.info("Sheets handler initialized successfully")
+            else:
+                logger.error(f"Error initializing sheets handler: {str(e)}")
+                raise Exception(f"Failed to initialize sheets handler: {str(e)}")
         
+    def verify_initialization(self) -> bool:
+        """Verify that the handler is properly initialized"""
+        try:
+            # Try to access the API
+            self.service.spreadsheets().get(spreadsheetId='dummy').execute()
+            return True
+        except Exception as e:
+            if 'Invalid spreadsheet ID' in str(e):
+                # This is expected - it means the service is working
+                return True
+            logger.error(f"Sheets handler verification failed: {str(e)}")
+            return False
+    
     def create_spreadsheet(self, title: str) -> Optional[str]:
         """
         Create a new Google Sheets spreadsheet
@@ -25,6 +48,9 @@ class SheetsHandler:
             str: Spreadsheet ID if successful, None otherwise
         """
         try:
+            if not self.verify_initialization():
+                raise Exception("Sheets handler is not properly initialized")
+                
             spreadsheet = {
                 'properties': {
                     'title': title
