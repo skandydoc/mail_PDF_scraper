@@ -400,9 +400,11 @@ def show_processing_results(results_by_group):
                     f"Successfully processed {result['success_count']} files into folder '{result['folder_path']}'"
                 )
                 
-                # Show Drive folder link
-                folder_url = f"https://drive.google.com/drive/folders/{result['folder_id']}"
-                st.markdown(f"[View files in Google Drive]({folder_url})")
+                # Show Drive folder link if folder_id is available
+                folder_id = st.session_state.drive_handler.check_folder_exists(result['folder_path'])
+                if folder_id:
+                    folder_url = f"https://drive.google.com/drive/folders/{folder_id}"
+                    st.markdown(f"[View files in Google Drive]({folder_url})")
             
             # Show password required files
             if result['password_required']:
@@ -421,27 +423,31 @@ def show_processing_results(results_by_group):
                     type="password",
                     key=f"new_password_{group_name}"
                 )
-                if new_password and st.button(f"Retry with new password - {group_name}"):
+                if new_password and st.button(f"Retry with new password - {group_name}", key=f"retry_button_{group_name}"):
                     with st.spinner("Retrying with new password..."):
-                        # Get the attachments that need password
-                        retry_attachments = [file_info['attachment'] for file_info in result['password_required']]
-                        # Retry processing with new password
-                        success_count, still_need_password, processed_files, processed_filenames, folder_path, errors = process_keyword_batch(
-                            group_name,
-                            retry_attachments,
-                            None,  # parent_folder_id is not needed
-                            new_password,
-                            result['processed_files']
-                        )
-                        if success_count > 0:
-                            st.success(f"Successfully processed {success_count} additional files")
-                            # Update the results
-                            result['success_count'] += success_count
-                            result['password_required'] = still_need_password
-                            result['processed_files'].update(processed_files)
-                            result['processed_filenames'].extend(processed_filenames)
-                            result['folder_path'] = folder_path
-                            st.rerun()
+                        try:
+                            # Get the attachments that need password
+                            retry_attachments = [file_info['attachment'] for file_info in result['password_required']]
+                            # Retry processing with new password
+                            success_count, still_need_password, processed_files, processed_filenames, folder_path, errors = process_keyword_batch(
+                                group_name,
+                                retry_attachments,
+                                None,  # parent_folder_id is not needed
+                                new_password,
+                                result['processed_files']
+                            )
+                            if success_count > 0:
+                                st.success(f"Successfully processed {success_count} additional files")
+                                # Update the results
+                                result['success_count'] += success_count
+                                result['password_required'] = still_need_password
+                                result['processed_files'].update(processed_files)
+                                result['processed_filenames'].extend(processed_filenames)
+                                result['folder_path'] = folder_path
+                                st.rerun()
+                        except Exception as e:
+                            logger.error(f"Error during retry: {str(e)}")
+                            st.error(f"Error during retry: {str(e)}")
             
             # Show error files
             if result.get('error_files'):
