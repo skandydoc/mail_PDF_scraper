@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings
+
+# Logs
+*.log
+logs/
+log/
+
+# Google API
+credentials.json
+token.json
+.credentials/
+client_secrets.json
+*.pickle
+
+# Session and Security
+.session.key
+.session/
+*.key
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# PDF files (in case any get saved locally)
+*.pdf
+
+# Chrome Extension Specific
+*.pem
+*.crx
+chrome-extension.zip
+node_modules/
+oauth2.keys.json
+client_secret*.json
+.config.json
+
+# Security
+*.crt
+*.csr
+secrets/
+
+# Audit logs
+audit_logs/
+**/audit_log_*.json
