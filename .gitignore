@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -16,6 +15,7 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -23,24 +23,53 @@ var/
 # Virtual Environment
 venv/
 ENV/
+env/
+.env
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+.project
+.pydevproject
+.settings
+
+# Logs
+*.log
+logs/
+log/
+
+# Google API
+credentials.json
+token.json
+.credentials/
+client_secrets.json
+*.pickle
+
+# Session and Security
+.session.key
+.session/
+*.key
+*.pem
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Application Specific
-.env
-.session.key
-*.log
-logs/
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# Temporary files
+*.tmp
+*.temp
 temp/
 tmp/
+
+# PDF files (in case any get saved locally)
+*.pdf
 
 # Chrome Extension Specific
 *.pem
@@ -49,15 +78,11 @@ chrome-extension.zip
 node_modules/
 oauth2.keys.json
 client_secret*.json
-credentials.json
-token.json
 .config.json
 
 # Security
-*.key
 *.crt
 *.csr
-*.pem
 secrets/
 
 # Audit logs

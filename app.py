@@ -45,10 +45,14 @@ if 'gmail_handler' not in st.session_state:
     st.session_state.gmail_handler = None
 if 'drive_handler' not in st.session_state:
     st.session_state.drive_handler = None
+if 'sheets_handler' not in st.session_state:
+    st.session_state.sheets_handler = None
 if 'pdf_handler' not in st.session_state:
     st.session_state.pdf_handler = PdfHandler()
 if 'security' not in st.session_state:
     st.session_state.security = SecurityHandler()
+if 'spreadsheet_id' not in st.session_state:
+    st.session_state.spreadsheet_id = None
 if 'user_session' not in st.session_state:
     st.session_state.user_session = None
 
@@ -540,6 +544,123 @@ def show_final_status(results_by_group):
         - Password Required: {total_password_required}
         - Errors: {total_errors}
         """)
+
+def process_files(files, passwords, group_key):
+    """Process selected files with given passwords"""
+    if not files:
+        return
+    
+    try:
+        # Create base folder if it doesn't exist
+        base_folder_name = "PDF Processor Output"
+        base_folder_id = st.session_state.drive_handler.check_folder_exists(base_folder_name)
+        if not base_folder_id:
+            base_folder_id = st.session_state.drive_handler.create_folder(base_folder_name)
+            if not base_folder_id:
+                st.error("Failed to create base folder in Google Drive")
+                return
+        
+        # Create group folder
+        group_folder_name = group_key
+        group_folder_id = st.session_state.drive_handler.create_folder(group_folder_name, base_folder_id)
+        if not group_folder_id:
+            st.error(f"Failed to create folder for group: {group_key}")
+            return
+        
+        # Create or get spreadsheet
+        if not st.session_state.spreadsheet_id:
+            st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("PDF Processor Transactions")
+            if not st.session_state.spreadsheet_id:
+                st.error("Failed to create Google Sheet for transactions")
+                return
+        
+        processed_count = 0
+        failed_count = 0
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for idx, file in enumerate(files):
+            try:
+                # Update progress
+                progress = (idx + 1) / len(files)
+                progress_bar.progress(progress)
+                status_text.text(f"Processing file {idx + 1} of {len(files)}: {file['filename']}")
+                
+                # Process PDF
+                file_data = st.session_state.gmail_handler.get_attachment(file['message_id'], file['attachment_id'])
+                if not file_data:
+                    logger.error(f"Failed to download file: {file['filename']}")
+                    failed_count += 1
+                    continue
+                
+                # Process PDF with password and get transactions
+                processed_data, needs_password, error_msg, transactions = st.session_state.pdf_handler.process_pdf(
+                    file_data,
+                    group_key,
+                    passwords,
+                    file.get('email_body', '')
+                )
+                
+                if needs_password:
+                    logger.warning(f"Password required for file: {file['filename']}")
+                    failed_count += 1
+                    continue
+                
+                if error_msg:
+                    logger.error(f"Error processing file {file['filename']}: {error_msg}")
+                    failed_count += 1
+                    continue
+                
+                if processed_data:
+                    # Generate filename with date
+                    date_str = datetime.now().strftime("%Y%m%d")
+                    filename = f"{date_str}_{file['filename']}"
+                    
+                    # Upload to Drive
+                    if st.session_state.drive_handler.upload_file(processed_data, filename, group_folder_id):
+                        processed_count += 1
+                        
+                        # Write transactions to sheet
+                        if transactions:
+                            st.session_state.sheets_handler.write_transactions(
+                                st.session_state.spreadsheet_id,
+                                group_key,
+                                transactions,
+                                filename
+                            )
+                    else:
+                        failed_count += 1
+                        logger.error(f"Failed to upload file: {filename}")
+                else:
+                    failed_count += 1
+                    logger.error(f"No processed data for file: {file['filename']}")
+            
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Error processing file {file['filename']}: {str(e)}")
+        
+        # Clear progress
+        progress_bar.empty()
+        status_text.empty()
+        
+        # Show results
+        if processed_count > 0:
+            st.success(f"Successfully processed {processed_count} file(s)")
+        if failed_count > 0:
+            st.error(f"Failed to process {failed_count} file(s)")
+        
+        # Show Drive link
+        if processed_count > 0:
+            folder_url = f"https://drive.google.com/drive/folders/{group_folder_id}"
+            st.markdown(f"[View processed files in Google Drive]({folder_url})")
+            
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{st.session_state.spreadsheet_id}"
+            st.markdown(f"[View transactions in Google Sheets]({sheet_url})")
+    
+    except Exception as e:
+        st.error(f"Error during processing: {str(e)}")
+        logger.error(f"Processing error: {str(e)}")
 
 def main():
     logger.info("Application started")
