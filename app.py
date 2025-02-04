@@ -710,6 +710,8 @@ def main():
             st.session_state.selected_exact_attachments = set()
         if 'selected_content_attachments' not in st.session_state:
             st.session_state.selected_content_attachments = set()
+        if 'main_folder_name' not in st.session_state:
+            st.session_state.main_folder_name = "PDF Processor Output"
         
         logger.info("Application started")
         
@@ -723,7 +725,7 @@ def main():
                     with st.spinner("Signing out..."):
                         if sign_out():
                             st.success("Signed out successfully!")
-                            time.sleep(1)  # Brief pause to show success message
+                            time.sleep(1)
                             st.rerun()
                         else:
                             st.error("Error signing out. Please try again.")
@@ -735,54 +737,52 @@ def main():
             st.session_state.auth_completed = False
         if 'auth_error' not in st.session_state:
             st.session_state.auth_error = None
-        if 'main_folder_name' not in st.session_state:
-            st.session_state.main_folder_name = "PDF Processor Output"
 
         # Authentication
         if 'gmail_handler' not in st.session_state or not st.session_state.gmail_handler:
             auth_container = st.container()
-            
             with auth_container:
                 if not st.session_state.auth_completed:
                     st.warning("Please authenticate with Google to continue")
-                    
                     if st.session_state.auth_error:
                         st.error(st.session_state.auth_error)
                         st.session_state.auth_error = None
-                    
                     if st.button("Sign In with Google", key="auth_button"):
                         with st.spinner("Authenticating with Google..."):
                             if initialize_handlers():
                                 st.success("Authentication successful!")
-                                time.sleep(0.5)  # Brief pause to show success message
+                                time.sleep(0.5)
                                 st.rerun()
             return
 
-        # Main folder name input
-        st.session_state.main_folder_name = st.text_input(
-            "Enter main Google Drive folder name",
-            value=st.session_state.main_folder_name,
-            help="This will be the main folder where all processed files will be organized"
-        )
+        # Configuration Section
+        with st.expander("Configuration", expanded=True):
+            # Main folder name input
+            st.session_state.main_folder_name = st.text_input(
+                "Enter main Google Drive folder name",
+                value=st.session_state.main_folder_name,
+                help="This will be the main folder where all processed files will be organized",
+                key="main_folder_input"
+            )
 
-        # Search Parameters
-        st.subheader("Search Parameters")
-        keywords = st.text_area(
-            "Enter search keywords (one per line)",
-            help="Enter keywords to search for in emails. The search will find emails containing any of these keywords."
-        ).split('\n')
-        keywords = [k.strip() for k in keywords if k.strip()]
+            # Search Parameters
+            st.subheader("Search Parameters")
+            keywords = st.text_area(
+                "Enter search keywords (one per line)",
+                help="Enter keywords to search for in emails. The search will find emails containing any of these keywords."
+            ).split('\n')
+            keywords = [k.strip() for k in keywords if k.strip()]
+
+            # Password list input
+            passwords = st.text_area(
+                "Enter possible passwords (one per line)",
+                help="Enter passwords that might be needed for PDF files. These will be available for selection for each group of files."
+            ).split('\n')
+            passwords = [p.strip() for p in passwords if p.strip()]
 
         if not keywords:
             st.warning("Please enter at least one keyword")
             return
-
-        # Password list input
-        passwords = st.text_area(
-            "Enter possible passwords (one per line)",
-            help="Enter passwords that might be needed for PDF files. These will be available for selection for each group of files."
-        ).split('\n')
-        passwords = [p.strip() for p in passwords if p.strip()]
 
         # Clear password cache when keywords or passwords change
         if ('last_keywords' not in st.session_state or st.session_state.last_keywords != keywords or
@@ -797,8 +797,12 @@ def main():
         if 'content_matches_by_sender' not in st.session_state:
             st.session_state.content_matches_by_sender = {}
 
-        # Search Emails
-        if st.button("Search Emails"):
+        # Search Emails button
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            search_button = st.button("Search Emails", type="primary", key="search_button")
+
+        if search_button:
             with st.spinner("Searching emails..."):
                 emails = st.session_state.gmail_handler.search_emails(keywords)
                 if not emails:
@@ -917,7 +921,7 @@ def main():
             if st.session_state.exact_matches_by_keyword or st.session_state.content_matches_by_sender:
                 st.subheader("Process Selected Files")
                 
-                # Get selected attachments from exact matches
+                # Get selected attachments
                 for keyword in st.session_state.exact_matches_by_keyword:
                     keyword_key = f"selected_exact_{keyword}"
                     if keyword_key in st.session_state:
@@ -926,7 +930,6 @@ def main():
                             if att['id'] in st.session_state[keyword_key]
                         ])
                 
-                # Get selected attachments from content matches
                 for sender in st.session_state.content_matches_by_sender:
                     sender_key = f"selected_content_{sender}"
                     if sender_key in st.session_state:
@@ -935,19 +938,13 @@ def main():
                             if att['id'] in st.session_state[sender_key]
                         ])
                 
-                # Show selection summary with error handling
-                try:
-                    show_selection_summary()
-                except Exception as e:
-                    logger.error(f"Error showing selection summary: {str(e)}")
-                    st.warning("Unable to display selection summary. Please try refreshing the page.")
+                # Show selection summary
+                show_selection_summary()
                 
-                if selected_exact_attachments or selected_content_attachments:
-                    # Show selection summary
-                    show_selection_summary()
-                    
-                    # Process Selected Files button
-                    if st.button("Process Selected Files", key="process_files_button", type="primary"):
+                # Process Selected Files button - centered and prominent
+                col1, col2, col3 = st.columns([2, 1, 2])
+                with col2:
+                    if st.button("Process Selected Files", key="process_files_button", type="primary", use_container_width=True):
                         with st.spinner("Processing files..."):
                             try:
                                 results_by_group = {}
