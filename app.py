@@ -932,105 +932,147 @@ def main():
                 
                 # Get selected attachments
                 try:
-                    for keyword in st.session_state.exact_matches_by_keyword:
-                        keyword_key = f"selected_exact_{keyword}"
-                        if keyword_key in st.session_state:
+                    # Get exact matches
+                    for keyword, matches in st.session_state.exact_matches_by_keyword.items():
+                        keyword_attachments = []
+                        for email in matches:
+                            for attachment in email['attachments']:
+                                keyword_attachments.append({
+                                    'subject': email['subject'],
+                                    'sender': email['sender'],
+                                    'sender_email': email.get('sender_email', 'Unknown'),
+                                    'date': format_ist_time(email['date']),
+                                    'filename': attachment['filename'],
+                                    'size': f"{attachment['size']/1024:.1f} KB",
+                                    'id': f"{email['id']}_{attachment['id']}",
+                                    'message_id': email['id'],
+                                    'attachment_id': attachment['id'],
+                                    'email_date': format_file_date(email['date']),
+                                    'password_hint': email.get('password_hint', '')
+                                })
+                        
+                        # Get selected attachments for this keyword
+                        keyword_key = f"selected_attachments_{keyword}"
+                        if keyword_key in st.session_state and st.session_state[keyword_key]:
                             selected_exact_attachments.extend([
                                 att for att in keyword_attachments 
                                 if att['id'] in st.session_state[keyword_key]
                             ])
                     
-                    for sender in st.session_state.content_matches_by_sender:
+                    # Get content matches
+                    for sender, matches in st.session_state.content_matches_by_sender.items():
+                        sender_attachments = []
+                        for email in matches:
+                            for attachment in email['attachments']:
+                                sender_attachments.append({
+                                    'subject': email.get('subject', 'No Subject'),
+                                    'sender': email.get('sender', 'Unknown'),
+                                    'sender_email': email.get('sender_email', 'Unknown'),
+                                    'date': format_ist_time(email['date']),
+                                    'filename': attachment['filename'],
+                                    'size': f"{attachment['size']/1024:.1f} KB",
+                                    'id': f"{email['id']}_{attachment['id']}",
+                                    'message_id': email['id'],
+                                    'attachment_id': attachment['id'],
+                                    'email_date': format_file_date(email['date']),
+                                    'password_hint': email.get('password_hint', '')
+                                })
+                        
+                        # Get selected attachments for this sender
                         sender_key = f"selected_content_{sender}"
-                        if sender_key in st.session_state:
+                        if sender_key in st.session_state and st.session_state[sender_key]:
                             selected_content_attachments.extend([
                                 att for att in sender_attachments 
                                 if att['id'] in st.session_state[sender_key]
                             ])
                     
                     # Show selection summary
-                    show_selection_summary()
-                    
-                    # Process Selected Files button - centered and prominent
-                    col1, col2, col3 = st.columns([2, 1, 2])
-                    with col2:
-                        if st.button("Process Selected Files", key="process_files_button", type="primary", use_container_width=True):
-                            st.session_state.processing_started = True
-                            st.rerun()
-                    
-                    # Handle processing in a separate block to avoid streamlit async issues
-                    if st.session_state.get('processing_started', False) and not st.session_state.get('processing_complete', False):
-                        with st.spinner("Processing files..."):
-                            try:
-                                results_by_group = {}
-                                processed_files = set()
-                                
-                                # Process exact matches by keyword
-                                for keyword in st.session_state.exact_matches_by_keyword:
-                                    keyword_attachments = [att for att in selected_exact_attachments if att['subject'].lower().find(keyword.lower()) != -1]
-                                    if keyword_attachments:
-                                        # Find working password for this group
-                                        working_password = get_group_password(keyword_attachments, passwords) if passwords else None
-                                        
-                                        success_count, password_required, processed_files, processed_filenames, folder_path, error_files = process_keyword_batch(
-                                            keyword,
-                                            keyword_attachments,
-                                            None,
-                                            working_password,
-                                            processed_files
-                                        )
-                                        
-                                        results_by_group[keyword] = {
-                                            'success_count': success_count,
-                                            'password_required': password_required,
-                                            'processed_files': processed_files,
-                                            'processed_filenames': processed_filenames,
-                                            'folder_path': folder_path,
-                                            'error_files': error_files
-                                        }
-                                
-                                # Process content matches by sender
-                                for sender in st.session_state.content_matches_by_sender:
-                                    sender_attachments = [att for att in selected_content_attachments if att['sender_email'] == sender]
-                                    if sender_attachments:
-                                        # Find working password for this group
-                                        working_password = get_group_password(sender_attachments, passwords) if passwords else None
-                                        
-                                        success_count, password_required, processed_files, processed_filenames, folder_path, error_files = process_keyword_batch(
-                                            f"content_matches_{sender}",
-                                            sender_attachments,
-                                            None,
-                                            working_password,
-                                            processed_files
-                                        )
-                                        
-                                        results_by_group[f"Content Matches - {sender}"] = {
-                                            'success_count': success_count,
-                                            'password_required': password_required,
-                                            'processed_files': processed_files,
-                                            'processed_filenames': processed_filenames,
-                                            'folder_path': folder_path,
-                                            'error_files': error_files
-                                        }
-                                
-                                st.session_state.results_by_group = results_by_group
-                                st.session_state.processing_complete = True
-                                st.session_state.processing_started = False
-                                st.rerun()
-                                
-                            except Exception as e:
-                                logger.error(f"Error in batch processing: {str(e)}")
-                                st.error(f"An error occurred during processing: {str(e)}")
-                                st.session_state.processing_complete = True
-                                st.session_state.processing_started = False
-                    
-                    # Show results after processing is complete
-                    if st.session_state.get('processing_complete', False) and hasattr(st.session_state, 'results_by_group'):
-                        # Show final status
-                        show_final_status(st.session_state.results_by_group)
+                    if selected_exact_attachments or selected_content_attachments:
+                        show_selection_summary()
                         
-                        # Show detailed results
-                        show_processing_results(st.session_state.results_by_group)
+                        # Process Selected Files button - centered and prominent
+                        col1, col2, col3 = st.columns([2, 1, 2])
+                        with col2:
+                            if st.button("Process Selected Files", key="process_files_button", type="primary", use_container_width=True):
+                                st.session_state.processing_started = True
+                                st.session_state.processing_complete = False
+                                st.rerun()
+                        
+                        # Handle processing in a separate block to avoid streamlit async issues
+                        if st.session_state.get('processing_started', False) and not st.session_state.get('processing_complete', False):
+                            with st.spinner("Processing files..."):
+                                try:
+                                    results_by_group = {}
+                                    processed_files = set()
+                                    
+                                    # Process exact matches by keyword
+                                    for keyword, matches in st.session_state.exact_matches_by_keyword.items():
+                                        keyword_attachments = [att for att in selected_exact_attachments if att['subject'].lower().find(keyword.lower()) != -1]
+                                        if keyword_attachments:
+                                            # Find working password for this group
+                                            working_password = get_group_password(keyword_attachments, passwords) if passwords else None
+                                            
+                                            success_count, password_required, processed_files, processed_filenames, folder_path, error_files = process_keyword_batch(
+                                                keyword,
+                                                keyword_attachments,
+                                                None,
+                                                working_password,
+                                                processed_files
+                                            )
+                                            
+                                            results_by_group[keyword] = {
+                                                'success_count': success_count,
+                                                'password_required': password_required,
+                                                'processed_files': processed_files,
+                                                'processed_filenames': processed_filenames,
+                                                'folder_path': folder_path,
+                                                'error_files': error_files
+                                            }
+                                    
+                                    # Process content matches by sender
+                                    for sender, matches in st.session_state.content_matches_by_sender.items():
+                                        sender_attachments = [att for att in selected_content_attachments if att['sender_email'] == sender]
+                                        if sender_attachments:
+                                            # Find working password for this group
+                                            working_password = get_group_password(sender_attachments, passwords) if passwords else None
+                                            
+                                            success_count, password_required, processed_files, processed_filenames, folder_path, error_files = process_keyword_batch(
+                                                f"content_matches_{sender}",
+                                                sender_attachments,
+                                                None,
+                                                working_password,
+                                                processed_files
+                                            )
+                                            
+                                            results_by_group[f"Content Matches - {sender}"] = {
+                                                'success_count': success_count,
+                                                'password_required': password_required,
+                                                'processed_files': processed_files,
+                                                'processed_filenames': processed_filenames,
+                                                'folder_path': folder_path,
+                                                'error_files': error_files
+                                            }
+                                    
+                                    st.session_state.results_by_group = results_by_group
+                                    st.session_state.processing_complete = True
+                                    st.session_state.processing_started = False
+                                    st.rerun()
+                                    
+                                except Exception as e:
+                                    logger.error(f"Error in batch processing: {str(e)}")
+                                    st.error(f"An error occurred during processing: {str(e)}")
+                                    st.session_state.processing_complete = True
+                                    st.session_state.processing_started = False
+                        
+                        # Show results after processing is complete
+                        if st.session_state.get('processing_complete', False) and hasattr(st.session_state, 'results_by_group'):
+                            # Show final status
+                            show_final_status(st.session_state.results_by_group)
+                            
+                            # Show detailed results
+                            show_processing_results(st.session_state.results_by_group)
+                    else:
+                        st.warning("Please select at least one file to process")
                 
                 except Exception as e:
                     logger.error(f"Error handling selected files: {str(e)}")
