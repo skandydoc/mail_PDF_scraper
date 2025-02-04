@@ -1100,10 +1100,6 @@ def main():
                         logger.error(f"Error handling selected files: {str(e)}")
                         st.error(f"An error occurred while handling selected files: {str(e)}")
                 
-                except Exception as e:
-                    logger.error(f"Error handling selected files: {str(e)}")
-                    st.error(f"An error occurred while handling selected files: {str(e)}")
-
         elif st.session_state.selected_phase == "phase2":
             try:
                 # Phase 2: Transaction Extraction
