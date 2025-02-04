@@ -395,78 +395,90 @@ def show_processing_results(results_by_group):
     """Display processing results for each group and folder"""
     for group_name, result in results_by_group.items():
         with st.expander(f"Results for '{group_name}'", expanded=True):
-            if result['success_count'] > 0:
-                st.success(
-                    f"Successfully processed {result['success_count']} files into folder '{result['folder_path']}'"
-                )
-                
-                # Get the folder ID from the path components
-                path_parts = result['folder_path'].split('/')
-                base_folder_id = st.session_state.drive_handler.check_folder_exists(path_parts[0])
-                if base_folder_id:
-                    folder_id = st.session_state.drive_handler.check_folder_exists(path_parts[1], parent_id=base_folder_id)
-                    if folder_id:
-                        folder_url = f"https://drive.google.com/drive/folders/{folder_id}"
-                        st.markdown(f"[View files in Google Drive]({folder_url})")
-            
-            # Show password required files
-            if result['password_required']:
-                st.warning(
-                    f"{len(result['password_required'])} files require a password or the provided "
-                    f"passwords were incorrect."
-                )
-                st.write("Files requiring password:")
-                for file_info in result['password_required']:
-                    hint_text = f" (Password hint: {file_info['password_hint']})" if file_info.get('password_hint') else ""
-                    st.write(f"- {file_info['filename']}: {file_info['error']}{hint_text}")
-                
-                # Add password input for retry
-                new_password = st.text_input(
-                    f"Enter password for {group_name} files",
-                    type="password",
-                    key=f"new_password_{group_name}"
-                )
-                if new_password and st.button(f"Retry with new password - {group_name}", key=f"retry_button_{group_name}"):
-                    with st.spinner("Retrying with new password..."):
-                        try:
-                            # Get the attachments that need password
-                            retry_attachments = [file_info['attachment'] for file_info in result['password_required']]
-                            # Retry processing with new password
-                            success_count, still_need_password, processed_files, processed_filenames, folder_path, errors = process_keyword_batch(
-                                group_name,
-                                retry_attachments,
-                                None,  # parent_folder_id is not needed
-                                new_password,
-                                result['processed_files']
-                            )
-                            if success_count > 0:
-                                st.success(f"Successfully processed {success_count} additional files")
-                                # Update the results
-                                result['success_count'] += success_count
-                                result['password_required'] = still_need_password
-                                result['processed_files'].update(processed_files)
-                                result['processed_filenames'].extend(processed_filenames)
-                                result['folder_path'] = folder_path
-                                st.rerun()
-                        except Exception as e:
-                            logger.error(f"Error during retry: {str(e)}")
-                            st.error(f"Error during retry: {str(e)}")
-            
-            # Show error files
-            if result.get('error_files'):
-                st.error("Some files encountered errors during processing:")
-                for error_file in result['error_files']:
-                    hint_text = f" (Password hint: {error_file['password_hint']})" if error_file.get('password_hint') else ""
-                    st.write(f"- {error_file['filename']}: {error_file['error']}{hint_text}")
-            
-            # Show successfully processed files
-            if result['processed_files']:
-                st.write("Successfully processed files:")
-                for file in result['processed_filenames']:
-                    st.write(f"- {file}")
+            try:
+                if result['success_count'] > 0:
+                    st.success(
+                        f"Successfully processed {result['success_count']} files into folder '{result['folder_path']}'"
+                    )
                     
-            if result['success_count'] == 0 and not result['password_required'] and not result.get('error_files'):
-                st.error(f"No files were processed for group '{group_name}'")
+                    # Get the folder ID from the path components
+                    try:
+                        path_parts = result['folder_path'].split('/')
+                        if len(path_parts) >= 2:
+                            base_folder_id = st.session_state.drive_handler.check_folder_exists(path_parts[0])
+                            if base_folder_id:
+                                # List all subfolders and find the matching one
+                                subfolders = st.session_state.drive_handler.list_folders(base_folder_id)
+                                folder_id = next((f['id'] for f in subfolders if f['name'] == path_parts[1]), None)
+                                if folder_id:
+                                    folder_url = f"https://drive.google.com/drive/folders/{folder_id}"
+                                    st.markdown(f"[View files in Google Drive]({folder_url})")
+                    except Exception as e:
+                        logger.error(f"Error getting folder URL: {str(e)}")
+                        # Don't show error to user, just log it
+                
+                # Show password required files
+                if result['password_required']:
+                    st.warning(
+                        f"{len(result['password_required'])} files require a password or the provided "
+                        f"passwords were incorrect."
+                    )
+                    st.write("Files requiring password:")
+                    for file_info in result['password_required']:
+                        hint_text = f" (Password hint: {file_info['password_hint']})" if file_info.get('password_hint') else ""
+                        st.write(f"- {file_info['filename']}: {file_info['error']}{hint_text}")
+                    
+                    # Add password input for retry
+                    new_password = st.text_input(
+                        f"Enter password for {group_name} files",
+                        type="password",
+                        key=f"new_password_{group_name}"
+                    )
+                    if new_password and st.button(f"Retry with new password - {group_name}", key=f"retry_button_{group_name}"):
+                        with st.spinner("Retrying with new password..."):
+                            try:
+                                # Get the attachments that need password
+                                retry_attachments = [file_info['attachment'] for file_info in result['password_required']]
+                                # Retry processing with new password
+                                success_count, still_need_password, processed_files, processed_filenames, folder_path, errors = process_keyword_batch(
+                                    group_name,
+                                    retry_attachments,
+                                    None,  # parent_folder_id is not needed
+                                    new_password,
+                                    result['processed_files']
+                                )
+                                if success_count > 0:
+                                    st.success(f"Successfully processed {success_count} additional files")
+                                    # Update the results
+                                    result['success_count'] += success_count
+                                    result['password_required'] = still_need_password
+                                    result['processed_files'].update(processed_files)
+                                    result['processed_filenames'].extend(processed_filenames)
+                                    result['folder_path'] = folder_path
+                                    st.rerun()
+                            except Exception as e:
+                                logger.error(f"Error during retry: {str(e)}")
+                                st.error(f"Error during retry: {str(e)}")
+                
+                # Show error files
+                if result.get('error_files'):
+                    st.error("Some files encountered errors during processing:")
+                    for error_file in result['error_files']:
+                        hint_text = f" (Password hint: {error_file['password_hint']})" if error_file.get('password_hint') else ""
+                        st.write(f"- {error_file['filename']}: {error_file['error']}{hint_text}")
+                
+                # Show successfully processed files
+                if result['processed_files']:
+                    st.write("Successfully processed files:")
+                    for file in result['processed_filenames']:
+                        st.write(f"- {file}")
+                        
+                if result['success_count'] == 0 and not result['password_required'] and not result.get('error_files'):
+                    st.error(f"No files were processed for group '{group_name}'")
+                    
+            except Exception as e:
+                logger.error(f"Error displaying results for group {group_name}: {str(e)}")
+                st.error(f"Error displaying results for group {group_name}. Please try refreshing the page.")
 
 def sign_out():
     """Sign out the current user and clear session state"""
