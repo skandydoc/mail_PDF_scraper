@@ -126,8 +126,6 @@ class DriveHandler:
                         spaces='drive',
                         fields='nextPageToken, files(id, name, parents)',
                         pageToken=page_token,
-                        supportsAllDrives=True,
-                        includeItemsFromAllDrives=True,
                         pageSize=100  # Optimize performance with reasonable page size
                     ).execute()
                     
@@ -140,8 +138,7 @@ class DriveHandler:
                                 # Verify we can actually access the folder
                                 self.service.files().get(
                                     fileId=folder['id'],
-                                    fields='id, name',
-                                    supportsAllDrives=True
+                                    fields='id, name'
                                 ).execute()
                                 accessible_folders.append(folder)
                             except Exception as e:
@@ -165,12 +162,13 @@ class DriveHandler:
             
             if not results:
                 logger.warning("No accessible folders found in Google Drive")
-                
+                return []  # Return empty list instead of raising an exception
+            
             return results
             
         except Exception as e:
             logger.error(f"Error listing all folders: {str(e)}")
-            raise Exception(f"Error accessing Google Drive folders: {str(e)}")
+            return []  # Return empty list instead of raising an exception
 
     def get_folder_path(self, folder_id):
         """Get the full path of a folder"""

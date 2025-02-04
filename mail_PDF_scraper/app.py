@@ -242,25 +242,38 @@ def initialize_handlers():
         auth_success = gmail_handler.authenticate()
         
         if auth_success:
-            st.session_state.gmail_handler = gmail_handler
-            st.session_state.drive_handler = DriveHandler(gmail_handler.creds)
-            st.session_state.sheets_handler = SheetsHandler(gmail_handler.creds)
-            
-            # Create secure session
-            user_info = gmail_handler.service.users().getProfile(userId='me').execute()
-            st.session_state.user_session = st.session_state.security.create_session(user_info['emailAddress'])
-            
-            # Log successful authentication
-            st.session_state.security.log_activity(
-                user_info['emailAddress'],
-                'authentication',
-                {'status': 'success', 'timestamp': datetime.now(ist).isoformat()}
-            )
-            
-            logger.info(f"Authentication successful for user: {user_info['emailAddress']}")
-            st.session_state.auth_completed = True
-            st.session_state.auth_error = None
-            return True
+            try:
+                st.session_state.gmail_handler = gmail_handler
+                st.session_state.drive_handler = DriveHandler(gmail_handler.creds)
+                st.session_state.sheets_handler = SheetsHandler(gmail_handler.creds)
+                
+                # Verify handlers are working
+                if not st.session_state.drive_handler.check_folder_exists("dummy"):
+                    logger.info("Drive handler verified")
+                if not st.session_state.sheets_handler.verify_initialization():
+                    raise Exception("Failed to initialize Google Sheets handler")
+                
+                # Create secure session
+                user_info = gmail_handler.service.users().getProfile(userId='me').execute()
+                st.session_state.user_session = st.session_state.security.create_session(user_info['emailAddress'])
+                
+                # Log successful authentication
+                st.session_state.security.log_activity(
+                    user_info['emailAddress'],
+                    'authentication',
+                    {'status': 'success', 'timestamp': datetime.now(ist).isoformat()}
+                )
+                
+                logger.info(f"Authentication successful for user: {user_info['emailAddress']}")
+                st.session_state.auth_completed = True
+                st.session_state.auth_error = None
+                return True
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Error initializing service handlers: {error_msg}")
+                st.session_state.auth_completed = False
+                st.session_state.auth_error = f"Service initialization failed: {error_msg}"
+                return False
             
         logger.error("Authentication failed in handler initialization")
         st.session_state.auth_completed = False
