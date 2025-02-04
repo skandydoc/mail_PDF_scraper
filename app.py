@@ -194,7 +194,7 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
     """Process a batch of attachments for a specific keyword"""
     try:
         if not attachments:
-            return 0, [], processed_files, [], "", []
+            return 0, [], processed_files or set(), [], "", []
             
         # Use main folder name from session state
         base_folder_name = st.session_state.main_folder_name
@@ -203,33 +203,26 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
             base_folder_id = st.session_state.drive_handler.create_folder(base_folder_name)
             if not base_folder_id:
                 st.error(f"Failed to create base output folder: {base_folder_name}")
-                return 0, [], processed_files, [], "", []
+                return 0, [], processed_files or set(), [], "", []
         
         # Then create subfolder for keyword inside the base folder
         keyword_folder_name = keyword.strip()  # Use exact keyword as folder name
         keyword_folder_id = st.session_state.drive_handler.create_folder(
             keyword_folder_name, 
-            base_folder_id  # Use base_folder_id instead of parent_folder_id
+            base_folder_id
         )
         
         if not keyword_folder_id:
             st.error(f"Failed to create folder for keyword: {keyword}")
-            return 0, [], processed_files, [], "", []
+            return 0, [], processed_files or set(), [], "", []
         
-        # Create or get spreadsheet
-        if not st.session_state.spreadsheet_id:
-            st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("PDF Processor Transactions")
-            if not st.session_state.spreadsheet_id:
-                st.error("Failed to create Google Sheet for transactions")
-                return 0, [], processed_files, [], "", []
-            
         # Process files
         success_count, password_required, updated_processed_files, processed_filenames, error_files = process_pdf_batch(
             attachments,
-            keyword_folder_id,  # Pass the keyword folder ID for file storage
+            keyword_folder_id,
             keyword,
             [password] if password else None,
-            processed_files
+            processed_files or set()
         )
         
         # Return the keyword folder name for display purposes
@@ -238,7 +231,7 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
         
     except Exception as e:
         logger.error(f"Error processing keyword batch {keyword}: {str(e)}")
-        return 0, [], processed_files, [], "", []
+        return 0, [], processed_files or set(), [], "", []
 
 def initialize_handlers():
     """Initialize Gmail and Drive handlers with authentication"""
@@ -524,7 +517,7 @@ def show_selection_summary():
     
     # Count exact matches
     for keyword in st.session_state.exact_matches_by_keyword:
-        keyword_key = f"selected_attachments_{keyword}"
+        keyword_key = f"selected_exact_{keyword}"
         if keyword_key in st.session_state:
             count = len(st.session_state[keyword_key])
             if count > 0:
@@ -870,7 +863,7 @@ def main():
                     for keyword, matches in st.session_state.exact_matches_by_keyword.items():
                         with st.expander(f"Exact Matches - {keyword}", expanded=True):
                             # Initialize selected attachments for this keyword
-                            keyword_key = f"selected_attachments_{keyword}"
+                            keyword_key = f"selected_exact_{keyword}"
                             if keyword_key not in st.session_state:
                                 st.session_state[keyword_key] = set()
                             
@@ -895,11 +888,11 @@ def main():
                             # Select all / Deselect all buttons
                             col1, col2 = st.columns(2)
                             with col1:
-                                if st.button(f"Select All - {keyword}"):
+                                if st.button(f"Select All - {keyword}", key=f"select_all_{keyword}"):
                                     st.session_state[keyword_key] = {att['id'] for att in keyword_attachments}
                                     st.rerun()
                             with col2:
-                                if st.button(f"Deselect All - {keyword}"):
+                                if st.button(f"Deselect All - {keyword}", key=f"deselect_all_{keyword}"):
                                     st.session_state[keyword_key] = set()
                                     st.rerun()
                             
@@ -974,7 +967,7 @@ def main():
                                     })
                             
                             # Get selected attachments for this keyword
-                            keyword_key = f"selected_attachments_{keyword}"
+                            keyword_key = f"selected_exact_{keyword}"
                             if keyword_key in st.session_state and st.session_state[keyword_key]:
                                 selected_exact_attachments.extend([
                                     att for att in keyword_attachments 
