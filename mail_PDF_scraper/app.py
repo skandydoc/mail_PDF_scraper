@@ -1126,109 +1126,170 @@ def main():
                         st.warning("Default output folder not found. Please process some files in Phase 1 first or select a custom folder.")
                 else:
                     # Get root level folders
+                    folders = []
                     try:
-                        folders = st.session_state.drive_handler.list_all_folders()
-                        if not folders:
-                            st.error("No folders found in Google Drive. Please check your permissions.")
-                            return
+                        with st.spinner("Loading folders from Google Drive..."):
+                            folders = st.session_state.drive_handler.list_all_folders()
+                            if not folders:
+                                st.warning("No accessible folders found in Google Drive. This could be because you don't have access to any folders or haven't created any yet.")
+                                
+                                # Add helpful suggestions
+                                st.info("""
+                                Suggestions:
+                                1. Check if you have any folders in your Google Drive
+                                2. Verify you're signed in with the correct Google account
+                                3. Try signing out and signing back in
+                                4. Create a new folder in Google Drive if needed
+                                """)
+                                
+                                # Add sign out button for convenience
+                                if st.button("Sign Out and Try Again"):
+                                    sign_out()
+                                    st.rerun()
+                                return
                     except Exception as e:
-                        logger.error(f"Error listing Google Drive folders: {str(e)}")
-                        st.error("Error accessing Google Drive folders. Please check your permissions.")
+                        error_msg = str(e)
+                        logger.error(f"Error accessing Google Drive folders: {error_msg}")
+                        
+                        if "permissions" in error_msg.lower():
+                            st.error("Unable to access Google Drive folders. Please check your permissions.")
+                            st.info("""
+                            This could be due to:
+                            1. Insufficient permissions
+                            2. Expired authentication
+                            3. Network connectivity issues
+                            
+                            Try signing out and signing back in.
+                            """)
+                        else:
+                            st.error(f"Error accessing Google Drive: {error_msg}")
+                        
+                        # Add sign out button
+                        if st.button("Sign Out and Try Again"):
+                            sign_out()
+                            st.rerun()
                         return
-                
-                if folders:
+                    
                     # Create a hierarchical folder structure for display
                     folder_options = []
-                    for folder in folders:
-                        try:
-                            # Get folder path
-                            path = st.session_state.drive_handler.get_folder_path(folder['id'])
-                            folder_options.append({
-                                'id': folder['id'],
-                                'name': folder['name'],
-                                'path': path,
-                                'display_name': f"{path}/{folder['name']}"
-                            })
-                        except Exception as e:
-                            logger.error(f"Error getting path for folder {folder['name']}: {str(e)}")
-                            continue
-                    
-                    # Sort folders by path for better organization
-                    folder_options.sort(key=lambda x: x['display_name'])
-                    
-                    # Create selection options
-                    selected_folders = st.multiselect(
-                        "Select folders to process",
-                        options=[f['display_name'] for f in folder_options],
-                        help="Select one or more folders containing PDFs to process"
-                    )
-                    
-                    if selected_folders:
-                        # Map selected folder names back to folder IDs
-                        selected_folder_info = [
-                            next(f for f in folder_options if f['display_name'] == folder_name)
-                            for folder_name in selected_folders
-                        ]
-                        
-                        if st.button("Extract Transactions", type="primary"):
-                            with st.spinner("Processing files and extracting transactions..."):
+                    try:
+                        with st.spinner("Building folder hierarchy..."):
+                            for folder in folders:
                                 try:
-                                    # Create or get spreadsheet
+                                    # Get folder path with progress indicator
+                                    path = st.session_state.drive_handler.get_folder_path(folder['id'])
+                                    folder_options.append({
+                                        'id': folder['id'],
+                                        'name': folder['name'],
+                                        'path': path,
+                                        'display_name': f"{path}/{folder['name']}" if path != "Root" else folder['name']
+                                    })
+                                except Exception as e:
+                                    logger.error(f"Error getting path for folder {folder['name']}: {str(e)}")
+                                    continue
+                            
+                            # Sort folders by path for better organization
+                            folder_options.sort(key=lambda x: x['display_name'].lower())
+                    except Exception as e:
+                        logger.error(f"Error building folder hierarchy: {str(e)}")
+                        st.error("An error occurred while building the folder hierarchy. Please try again.")
+                        return
+                    
+                if not folder_options:
+                    st.warning("No accessible folders found. Please check your Google Drive permissions.")
+                    return
+                
+                # Create selection options with search/filter
+                st.subheader("Select Folders to Process")
+                
+                # Add search box for filtering folders
+                search_term = st.text_input("Search folders", help="Type to filter folders by name or path")
+                
+                # Filter folders based on search term
+                filtered_options = folder_options
+                if search_term:
+                    search_term = search_term.lower()
+                    filtered_options = [
+                        f for f in folder_options 
+                        if search_term in f['display_name'].lower()
+                    ]
+                
+                # Show folder count
+                st.caption(f"Showing {len(filtered_options)} of {len(folder_options)} folders")
+                
+                # Create selection options
+                selected_folders = st.multiselect(
+                    "Select folders to process",
+                    options=[f['display_name'] for f in filtered_options],
+                    help="Select one or more folders containing PDFs to process"
+                )
+                
+                if selected_folders:
+                    # Map selected folder names back to folder IDs
+                    selected_folder_info = [
+                        next(f for f in folder_options if f['display_name'] == folder_name)
+                        for folder_name in selected_folders
+                    ]
+                    
+                    if st.button("Extract Transactions", type="primary"):
+                        with st.spinner("Processing files and extracting transactions..."):
+                            try:
+                                # Create or get spreadsheet
+                                if not st.session_state.spreadsheet_id:
+                                    st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("PDF Processor Transactions")
                                     if not st.session_state.spreadsheet_id:
-                                        st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("PDF Processor Transactions")
-                                        if not st.session_state.spreadsheet_id:
-                                            st.error("Failed to create Google Sheet for transactions")
-                                            return
-                                    
-                                    total_files = 0
-                                    processed_files = 0
-                                    
-                                    # Process each selected folder
-                                    for folder_info in selected_folder_info:
-                                        # Get PDFs in folder
-                                        pdfs = st.session_state.drive_handler.list_files(folder_info['id'], file_type='application/pdf')
-                                        if pdfs:
-                                            total_files += len(pdfs)
-                                            
-                                            # Create progress bar for this folder
-                                            st.write(f"Processing folder: {folder_info['display_name']}")
-                                            progress_bar = st.progress(0)
-                                            
-                                            for idx, pdf in enumerate(pdfs):
-                                                try:
-                                                    # Update progress
-                                                    progress = (idx + 1) / len(pdfs)
-                                                    progress_bar.progress(progress)
-                                                    
-                                                    # Download PDF
-                                                    file_data = st.session_state.drive_handler.download_file(pdf['id'])
-                                                    if file_data:
-                                                        # Extract transactions
-                                                        _, _, _, transactions = st.session_state.pdf_handler.process_pdf(
-                                                            file_data,
-                                                            folder_info['name'],
-                                                            None,
-                                                            None
-                                                        )
-                                                        
-                                                        # Write transactions to sheet
-                                                        if transactions:
-                                                            if st.session_state.sheets_handler.write_transactions(
-                                                                st.session_state.spreadsheet_id,
-                                                                folder_info['name'],
-                                                                transactions,
-                                                                pdf['name']
-                                                            ):
-                                                                processed_files += 1
-                                                                st.write(f"✓ Processed: {pdf['name']}")
-                                                            else:
-                                                                st.write(f"✗ Failed to write transactions: {pdf['name']}")
-                                                        else:
-                                                            st.write(f"⚠ No transactions found in: {pdf['name']}")
+                                        st.error("Failed to create Google Sheet for transactions")
+                                        return
+                                
+                                total_files = 0
+                                processed_files = 0
+                                
+                                # Process each selected folder
+                                for folder_info in selected_folder_info:
+                                    # Get PDFs in folder
+                                    pdfs = st.session_state.drive_handler.list_files(folder_info['id'], file_type='application/pdf')
+                                    if pdfs:
+                                        total_files += len(pdfs)
+                                        
+                                        # Create progress bar for this folder
+                                        st.write(f"Processing folder: {folder_info['display_name']}")
+                                        progress_bar = st.progress(0)
+                                        
+                                        for idx, pdf in enumerate(pdfs):
+                                            try:
+                                                # Update progress
+                                                progress = (idx + 1) / len(pdfs)
+                                                progress_bar.progress(progress)
                                                 
-                                                except Exception as e:
-                                                    logger.error(f"Error processing file {pdf['name']}: {str(e)}")
-                                                    st.error(f"Error processing {pdf['name']}: {str(e)}")
+                                                # Download PDF
+                                                file_data = st.session_state.drive_handler.download_file(pdf['id'])
+                                                if file_data:
+                                                    # Extract transactions
+                                                    _, _, _, transactions = st.session_state.pdf_handler.process_pdf(
+                                                        file_data,
+                                                        folder_info['name'],
+                                                        None,
+                                                        None
+                                                    )
+                                                    
+                                                    # Write transactions to sheet
+                                                    if transactions:
+                                                        if st.session_state.sheets_handler.write_transactions(
+                                                            st.session_state.spreadsheet_id,
+                                                            folder_info['name'],
+                                                            transactions,
+                                                            pdf['name']
+                                                        ):
+                                                            processed_files += 1
+                                                            st.write(f"✓ Processed: {pdf['name']}")
+                                                        else:
+                                                            st.write(f"✗ Failed to write transactions: {pdf['name']}")
+                                                    else:
+                                                        st.write(f"⚠ No transactions found in: {pdf['name']}")
+                                                
+                                            except Exception as e:
+                                                logger.error(f"Error processing file {pdf['name']}: {str(e)}")
+                                                st.error(f"Error processing {pdf['name']}: {str(e)}")
                                             
                                             # Clear progress bar after folder is complete
                                             progress_bar.empty()
@@ -1243,9 +1304,9 @@ def main():
                                     else:
                                         st.warning("No files were processed successfully")
                                 
-                                except Exception as e:
-                                    logger.error(f"Error during transaction extraction: {str(e)}")
-                                    st.error(f"An error occurred: {str(e)}")
+                            except Exception as e:
+                                logger.error(f"Error during transaction extraction: {str(e)}")
+                                st.error(f"An error occurred: {str(e)}")
             
             except Exception as e:
                 logger.error(f"Error in Phase 2: {str(e)}")
