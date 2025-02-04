@@ -50,4 +50,6 @@ logs/
 output/
 temp/
 ~
-~/ 
+~/
+.streamlit/
+config.toml
