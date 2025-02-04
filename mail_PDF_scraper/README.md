@@ -50,11 +50,21 @@ echo 'browser.gatherUsageStats = false' > .streamlit/config.toml
 
 ## Usage
 
-1. Start the application:
+You can run the application in two ways:
+
+1. Using the convenience script (recommended):
 ```bash
+./run.sh
+```
+
+2. Or manually:
+```bash
+cd mail_PDF_scraper
 streamlit run app.py
 ```
 
+After starting the application:
+1. Open the URL shown in your terminal (typically http://localhost:8501)
 2. Authenticate with your Google account
 3. Select operation phase:
    - Phase 1: Process emails and store PDFs
@@ -66,6 +76,7 @@ streamlit run app.py
 ```
 mail_PDF_scraper/
 ├── app.py                    # Main application file
+├── run.sh                    # Convenience script to run the app
 ├── requirements.txt          # Python dependencies
 ├── credentials.json          # Google OAuth credentials
 ├── utils/                    # Utility modules
