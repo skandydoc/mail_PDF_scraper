@@ -196,11 +196,20 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
         if not attachments:
             return 0, [], processed_files, [], "", []
             
-        # Create subfolder for keyword
+        # First, create or get the base output folder
+        base_folder_name = "PDF Processor Output"
+        base_folder_id = st.session_state.drive_handler.check_folder_exists(base_folder_name)
+        if not base_folder_id:
+            base_folder_id = st.session_state.drive_handler.create_folder(base_folder_name)
+            if not base_folder_id:
+                st.error("Failed to create base output folder")
+                return 0, [], processed_files, [], "", []
+        
+        # Then create subfolder for keyword inside the base folder
         keyword_folder_name = keyword.strip()  # Use exact keyword as folder name
         keyword_folder_id = st.session_state.drive_handler.create_folder(
             keyword_folder_name, 
-            parent_folder_id
+            base_folder_id  # Use base_folder_id instead of parent_folder_id
         )
         
         if not keyword_folder_id:
@@ -217,13 +226,15 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
         # Process files
         success_count, password_required, updated_processed_files, processed_filenames, error_files = process_pdf_batch(
             attachments,
-            keyword_folder_id,
+            keyword_folder_id,  # Pass the keyword folder ID for file storage
             keyword,
             [password] if password else None,
             processed_files
         )
         
-        return success_count, password_required, updated_processed_files, processed_filenames, keyword_folder_name, error_files
+        # Return the keyword folder name for display purposes
+        folder_path = f"{base_folder_name}/{keyword_folder_name}"
+        return success_count, password_required, updated_processed_files, processed_filenames, folder_path, error_files
         
     except Exception as e:
         logger.error(f"Error processing keyword batch {keyword}: {str(e)}")
@@ -387,14 +398,18 @@ def display_content_matches(content_matches, selected_content_attachments_key: s
         # Add selected attachments from this group to the main selection
         st.session_state[selected_content_attachments_key].update(st.session_state[group_key])
 
-def show_processing_results(results_by_keyword):
-    """Display processing results for each keyword and folder"""
-    for keyword, result in results_by_keyword.items():
-        with st.expander(f"Results for '{keyword}'", expanded=True):
+def show_processing_results(results_by_group):
+    """Display processing results for each group and folder"""
+    for group_name, result in results_by_group.items():
+        with st.expander(f"Results for '{group_name}'", expanded=True):
             if result['success_count'] > 0:
                 st.success(
-                    f"Successfully processed {result['success_count']} files into folder '{result['folder_name']}'"
+                    f"Successfully processed {result['success_count']} files into folder '{result['folder_path']}'"
                 )
+                
+                # Show Drive folder link
+                folder_url = f"https://drive.google.com/drive/folders/{result['folder_id']}"
+                st.markdown(f"[View files in Google Drive]({folder_url})")
             
             # Show password required files
             if result['password_required']:
@@ -409,21 +424,21 @@ def show_processing_results(results_by_keyword):
                 
                 # Add password input for retry
                 new_password = st.text_input(
-                    f"Enter password for {keyword} files",
+                    f"Enter password for {group_name} files",
                     type="password",
-                    key=f"new_password_{keyword}"
+                    key=f"new_password_{group_name}"
                 )
-                if new_password and st.button(f"Retry with new password - {keyword}"):
+                if new_password and st.button(f"Retry with new password - {group_name}"):
                     with st.spinner("Retrying with new password..."):
                         # Get the attachments that need password
                         retry_attachments = [file_info['attachment'] for file_info in result['password_required']]
                         # Retry processing with new password
-                        success_count, still_need_password, processed_files, processed_filenames, errors = process_pdf_batch(
+                        success_count, still_need_password, processed_files, processed_filenames, folder_path, errors = process_keyword_batch(
+                            group_name,
                             retry_attachments,
-                            result['folder_id'],
-                            keyword,
-                            passwords=[new_password],
-                            processed_files=result['processed_files']
+                            None,  # parent_folder_id is not needed
+                            new_password,
+                            result['processed_files']
                         )
                         if success_count > 0:
                             st.success(f"Successfully processed {success_count} additional files")
@@ -432,6 +447,7 @@ def show_processing_results(results_by_keyword):
                             result['password_required'] = still_need_password
                             result['processed_files'].update(processed_files)
                             result['processed_filenames'].extend(processed_filenames)
+                            result['folder_path'] = folder_path
                             st.rerun()
             
             # Show error files
@@ -448,7 +464,7 @@ def show_processing_results(results_by_keyword):
                     st.write(f"- {file}")
                     
             if result['success_count'] == 0 and not result['password_required'] and not result.get('error_files'):
-                st.error(f"No files were processed for keyword '{keyword}'")
+                st.error(f"No files were processed for group '{group_name}'")
 
 def sign_out():
     """Sign out the current user and clear session state"""
@@ -834,7 +850,7 @@ def main():
                     
                     # Display table
                     edited_df = display_results_table(keyword_attachments, f"exact_{keyword}", keyword_key)
-        
+
         # Display content matches by sender
         if st.session_state.content_matches_by_sender:
             st.subheader("Content Matches")
@@ -877,79 +893,16 @@ def main():
                     
                     # Display table
                     edited_df = display_results_table(sender_attachments, f"content_{sender}", sender_key)
-                    
-                    # Add selected attachments from this group to the main selection
-                    st.session_state[sender_key].update(
-                        att['id'] for att in sender_attachments
-                        if att['id'] in st.session_state[sender_key]
-                    )
-
-        # Get selected attachments from all groups
-        selected_exact_attachments = []
-        for keyword, matches in st.session_state.exact_matches_by_keyword.items():
-            keyword_key = f"selected_attachments_{keyword}"
-            if keyword_key in st.session_state:
-                for email in matches:
-                    for attachment in email['attachments']:
-                        if f"{email['id']}_{attachment['id']}" in st.session_state[keyword_key]:
-                            selected_exact_attachments.append({
-                                'subject': email['subject'],
-                                'sender': email['sender'],
-                                'sender_email': email.get('sender_email', 'Unknown'),
-                                'date': format_ist_time(email['date']),
-                                'filename': attachment['filename'],
-                                'size': f"{attachment['size']/1024:.1f} KB",
-                                'id': f"{email['id']}_{attachment['id']}",
-                                'message_id': email['id'],
-                                'attachment_id': attachment['id'],
-                                'email_date': format_file_date(email['date']),
-                                'password_hint': email.get('password_hint', '')
-                            })
-
-        selected_content_attachments = []
-        for sender, matches in st.session_state.content_matches_by_sender.items():
-            sender_key = f"selected_content_{sender}"
-            if sender_key in st.session_state:
-                for email in matches:
-                    for attachment in email['attachments']:
-                        if f"{email['id']}_{attachment['id']}" in st.session_state[sender_key]:
-                            selected_content_attachments.append({
-                                'subject': email.get('subject', 'No Subject'),
-                                'sender': email.get('sender', 'Unknown'),
-                                'sender_email': email.get('sender_email', 'Unknown'),
-                                'date': format_ist_time(email['date']),
-                                'filename': attachment['filename'],
-                                'size': f"{attachment['size']/1024:.1f} KB",
-                                'id': f"{email['id']}_{attachment['id']}",
-                                'message_id': email['id'],
-                                'attachment_id': attachment['id'],
-                                'email_date': format_file_date(email['date']),
-                                'password_hint': email.get('password_hint', '')
-                            })
 
         if selected_exact_attachments or selected_content_attachments:
-            st.subheader("Upload to Google Drive")
+            st.subheader("Process Selected Files")
             
             # Show selection summary
             show_selection_summary()
             
-            # Main folder input
-            main_folder = st.text_input(
-                "Enter main Google Drive folder name",
-                help="Enter the name of the main folder where all files will be organized"
-            )
-            
-            if main_folder and st.button("Process Selected Files"):
+            if st.button("Process Selected Files"):
                 with st.spinner("Processing files..."):
                     try:
-                        # Create main folder
-                        main_folder_id = st.session_state.drive_handler.check_folder_exists(main_folder)
-                        if not main_folder_id:
-                            main_folder_id = st.session_state.drive_handler.create_folder(main_folder)
-                            if not main_folder_id:
-                                st.error("Failed to create main folder in Google Drive")
-                                return
-                        
                         results_by_group = {}
                         processed_files = set()
                         
@@ -959,25 +912,22 @@ def main():
                             if keyword_attachments:
                                 # Find working password for this group
                                 working_password = get_group_password(keyword_attachments, passwords) if passwords else None
-                                group_passwords = [working_password] if working_password else passwords
                                 
-                                folder_name = f"{keyword}_exact_matches"
-                                success_count, password_required, processed_files, processed_filenames, error_files = process_pdf_batch(
+                                success_count, password_required, processed_files, processed_filenames, folder_path, error_files = process_keyword_batch(
+                                    keyword,
                                     keyword_attachments,
-                                    main_folder_id,
-                                    folder_name,
-                                    passwords=group_passwords,
-                                    processed_files=processed_files
+                                    None,  # parent_folder_id is not needed anymore
+                                    working_password,
+                                    processed_files
                                 )
                                 
-                                results_by_group[folder_name] = {
+                                results_by_group[keyword] = {
                                     'success_count': success_count,
                                     'password_required': password_required,
                                     'processed_files': processed_files,
                                     'processed_filenames': processed_filenames,
-                                    'error_files': error_files,
-                                    'folder_name': folder_name,
-                                    'folder_id': main_folder_id
+                                    'folder_path': folder_path,
+                                    'error_files': error_files
                                 }
                         
                         # Process content matches by sender
@@ -986,25 +936,22 @@ def main():
                             if sender_attachments:
                                 # Find working password for this group
                                 working_password = get_group_password(sender_attachments, passwords) if passwords else None
-                                group_passwords = [working_password] if working_password else passwords
                                 
-                                folder_name = f"content_matches_{sender}"
-                                success_count, password_required, processed_files, processed_filenames, error_files = process_pdf_batch(
+                                success_count, password_required, processed_files, processed_filenames, folder_path, error_files = process_keyword_batch(
+                                    f"content_matches_{sender}",
                                     sender_attachments,
-                                    main_folder_id,
-                                    folder_name,
-                                    passwords=group_passwords,
-                                    processed_files=processed_files
+                                    None,  # parent_folder_id is not needed anymore
+                                    working_password,
+                                    processed_files
                                 )
                                 
-                                results_by_group[folder_name] = {
+                                results_by_group[f"Content Matches - {sender}"] = {
                                     'success_count': success_count,
                                     'password_required': password_required,
                                     'processed_files': processed_files,
                                     'processed_filenames': processed_filenames,
-                                    'error_files': error_files,
-                                    'folder_name': folder_name,
-                                    'folder_id': main_folder_id
+                                    'folder_path': folder_path,
+                                    'error_files': error_files
                                 }
                         
                         # Show final status
