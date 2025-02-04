@@ -22,7 +22,7 @@ wheels/
 
 # Virtual Environment
 .env
-.venv
+.venv/
 env/
 venv/
 ENV/
@@ -35,11 +35,57 @@ ENV/
 .DS_Store
 
 # Application specific
-credentials/*.json
-token.pickle
-*.log
-logs/
+**/credentials/*.json
+**/token.pickle
+**/*.log
+**/logs/
 .streamlit/secrets.toml
+**/detailed_documentation.md
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Application runtime files
+*.pickle
+*.session
+*.cache
+
+# Local development
+local_settings.py
+*.sqlite3
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment directories
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Security
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.priv
+
+# Backup files
+*~
+*.bak
+*.swp
+*.swo
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -77,11 +123,6 @@ coverage.xml
 *.mo
 *.pot
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-
 # Flask stuff:
 instance/
 .webassets-cache
@@ -94,9 +135,6 @@ docs/_build/
 
 # PyBuilder
 target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
 
 # pyenv
 .python-version
