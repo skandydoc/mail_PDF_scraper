@@ -1,10 +1,13 @@
 import streamlit as st
 import os
-from utils.gmail_handler import GmailHandler
-from utils.drive_handler import DriveHandler
-from utils.pdf_handler import PdfHandler
-from utils.security import SecurityHandler
-from utils.logger_config import setup_logger
+from utils import (
+    GmailHandler,
+    DriveHandler,
+    PdfHandler,
+    SecurityHandler,
+    setup_logger,
+    SheetsHandler
+)
 from dotenv import load_dotenv
 import logging
 from datetime import datetime
