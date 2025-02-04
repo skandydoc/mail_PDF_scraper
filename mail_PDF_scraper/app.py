@@ -2,6 +2,7 @@ import streamlit as st
 import os
 from utils.gmail_handler import GmailHandler
 from utils.drive_handler import DriveHandler
+from utils.sheets_handler import SheetsHandler
 from utils.pdf_handler import PdfHandler
 from utils.security import SecurityHandler
 from utils.logger_config import setup_logger
@@ -10,13 +11,16 @@ import logging
 from datetime import datetime
 import time
 import pytz
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 # Set up logging
 logger = setup_logger()
 
 # Load environment variables
 load_dotenv()
+
+# Set timezone
+ist = pytz.timezone('Asia/Kolkata')
 
 # Set page config to wide mode with menu
 st.set_page_config(
@@ -55,6 +59,36 @@ if 'spreadsheet_id' not in st.session_state:
     st.session_state.spreadsheet_id = None
 if 'user_session' not in st.session_state:
     st.session_state.user_session = None
+if 'auth_completed' not in st.session_state:
+    st.session_state.auth_completed = False
+if 'auth_error' not in st.session_state:
+    st.session_state.auth_error = None
+if 'selected_exact_attachments' not in st.session_state:
+    st.session_state.selected_exact_attachments = set()
+if 'selected_content_attachments' not in st.session_state:
+    st.session_state.selected_content_attachments = set()
+if 'main_folder_name' not in st.session_state:
+    st.session_state.main_folder_name = "PDF Processor Output"
+if 'processing_complete' not in st.session_state:
+    st.session_state.processing_complete = False
+if 'selected_phase' not in st.session_state:
+    st.session_state.selected_phase = None
+if 'exact_matches_by_keyword' not in st.session_state:
+    st.session_state.exact_matches_by_keyword = {}
+if 'content_matches_by_sender' not in st.session_state:
+    st.session_state.content_matches_by_sender = {}
+if 'search_results' not in st.session_state:
+    st.session_state.search_results = None
+if 'last_keywords' not in st.session_state:
+    st.session_state.last_keywords = None
+if 'last_passwords' not in st.session_state:
+    st.session_state.last_passwords = None
+if 'selected_folders' not in st.session_state:
+    st.session_state.selected_folders = []
+if 'folder_options' not in st.session_state:
+    st.session_state.folder_options = []
+if 'last_folder_source' not in st.session_state:
+    st.session_state.last_folder_source = None
 
 # Get IST timezone
 ist = pytz.timezone('Asia/Kolkata')
@@ -243,15 +277,19 @@ def initialize_handlers():
         
         if auth_success:
             try:
+                # Initialize Gmail handler
                 st.session_state.gmail_handler = gmail_handler
-                st.session_state.drive_handler = DriveHandler(gmail_handler.creds)
-                st.session_state.sheets_handler = SheetsHandler(gmail_handler.creds)
                 
-                # Verify handlers are working
+                # Initialize Drive handler
+                st.session_state.drive_handler = DriveHandler(gmail_handler.creds)
                 if not st.session_state.drive_handler.check_folder_exists("dummy"):
                     logger.info("Drive handler verified")
-                if not st.session_state.sheets_handler.verify_initialization():
+                
+                # Initialize Sheets handler
+                st.session_state.sheets_handler = SheetsHandler(gmail_handler.creds)
+                if not st.session_state.sheets_handler.ensure_initialized():
                     raise Exception("Failed to initialize Google Sheets handler")
+                logger.info("Sheets handler verified")
                 
                 # Create secure session
                 user_info = gmail_handler.service.users().getProfile(userId='me').execute()
@@ -268,17 +306,26 @@ def initialize_handlers():
                 st.session_state.auth_completed = True
                 st.session_state.auth_error = None
                 return True
+                
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"Error initializing service handlers: {error_msg}")
                 st.session_state.auth_completed = False
                 st.session_state.auth_error = f"Service initialization failed: {error_msg}"
+                # Clear any partially initialized handlers
+                if hasattr(st.session_state, 'gmail_handler'):
+                    del st.session_state.gmail_handler
+                if hasattr(st.session_state, 'drive_handler'):
+                    del st.session_state.drive_handler
+                if hasattr(st.session_state, 'sheets_handler'):
+                    del st.session_state.sheets_handler
                 return False
-            
+        
         logger.error("Authentication failed in handler initialization")
         st.session_state.auth_completed = False
         st.session_state.auth_error = "Authentication failed. Please try again."
         return False
+        
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Error initializing handlers: {error_msg}")
@@ -616,11 +663,27 @@ def process_files(files, passwords, group_key):
             st.error(f"Failed to create folder for group: {group_key}")
             return
         
+        # Verify sheets handler is initialized
+        if not hasattr(st.session_state, 'sheets_handler') or not st.session_state.sheets_handler:
+            st.error("Google Sheets handler is not initialized. Please try signing out and signing back in.")
+            return
+
+        if not st.session_state.sheets_handler.ensure_initialized():
+            st.error("Google Sheets handler is not working properly. Please try signing out and signing back in.")
+            # Clear the handler to force re-initialization
+            st.session_state.sheets_handler = None
+            return
+
         # Create or get spreadsheet
-        if not st.session_state.spreadsheet_id:
-            st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("PDF Processor Transactions")
-            if not st.session_state.spreadsheet_id:
-                st.error("Failed to create Google Sheet for transactions")
+        if not hasattr(st.session_state, 'spreadsheet_id') or not st.session_state.spreadsheet_id:
+            try:
+                st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("Credit Card Transactions")
+                if not st.session_state.spreadsheet_id:
+                    st.error("Failed to create Google Sheet for transactions. Please check your permissions.")
+                    return
+            except Exception as e:
+                logger.error(f"Error creating spreadsheet: {str(e)}")
+                st.error(f"Failed to create spreadsheet: {str(e)}")
                 return
         
         processed_count = 0
@@ -711,776 +774,747 @@ def process_files(files, passwords, group_key):
         st.error(f"Error during processing: {str(e)}")
         logger.error(f"Processing error: {str(e)}")
 
-def main():
-    try:
-        # Initialize selected attachments containers
-        selected_exact_attachments = []
-        selected_content_attachments = []
-        
-        # Initialize session state for attachments if not exists
-        if 'selected_exact_attachments' not in st.session_state:
-            st.session_state.selected_exact_attachments = set()
-        if 'selected_content_attachments' not in st.session_state:
-            st.session_state.selected_content_attachments = set()
-        if 'main_folder_name' not in st.session_state:
-            st.session_state.main_folder_name = "PDF Processor Output"
-        if 'processing_complete' not in st.session_state:
+def authenticate_user():
+    """Handle user authentication"""
+    auth_container = st.container()
+    with auth_container:
+        if not st.session_state.auth_completed:
+            st.warning("Please authenticate with Google to continue")
+            if st.session_state.auth_error:
+                st.error(st.session_state.auth_error)
+                st.session_state.auth_error = None
+            if st.button("Sign In with Google", key="auth_button"):
+                with st.spinner("Authenticating with Google..."):
+                    if initialize_handlers():
+                        st.success("Authentication successful!")
+                        time.sleep(0.5)
+                        st.rerun()
+
+def show_sign_out_button():
+    """Display the sign out button"""
+    if st.button("Sign Out", type="secondary", key="sign_out_button"):
+        with st.spinner("Signing out..."):
+            if sign_out():
+                st.success("Signed out successfully!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("Error signing out. Please try again.")
+
+def show_app_header():
+    """Display the application header"""
+    col1, col2 = st.columns([6, 1])
+    with col1:
+        st.title("Secure Gmail PDF Attachment Processor")
+    with col2:
+        show_sign_out_button()
+    st.write("Tool for downloading and organizing PDF attachments from Gmail")
+
+def show_main_interface():
+    """Display the main application interface"""
+    # Initialize selected attachments containers
+    selected_exact_attachments = []
+    selected_content_attachments = []
+    
+    # Initialize session state for attachments if not exists
+    if 'selected_exact_attachments' not in st.session_state:
+        st.session_state.selected_exact_attachments = set()
+    if 'selected_content_attachments' not in st.session_state:
+        st.session_state.selected_content_attachments = set()
+    if 'main_folder_name' not in st.session_state:
+        st.session_state.main_folder_name = "PDF Processor Output"
+    if 'processing_complete' not in st.session_state:
+        st.session_state.processing_complete = False
+    if 'selected_phase' not in st.session_state:
+        st.session_state.selected_phase = None
+    
+    # Phase Selection
+    st.subheader("Select Operation Phase")
+    phase_col1, phase_col2 = st.columns(2)
+    with phase_col1:
+        if st.button("Phase 1: Email Processing & PDF Storage", 
+                    type="primary" if st.session_state.selected_phase == "phase1" else "secondary",
+                    use_container_width=True):
+            st.session_state.selected_phase = "phase1"
+            st.rerun()
+    with phase_col2:
+        if st.button("Phase 2: Transaction Extraction", 
+                    type="primary" if st.session_state.selected_phase == "phase2" else "secondary",
+                    use_container_width=True):
+            st.session_state.selected_phase = "phase2"
+            st.rerun()
+
+    if st.session_state.selected_phase == "phase1":
+        show_phase1_interface()
+    elif st.session_state.selected_phase == "phase2":
+        show_phase2_interface()
+    else:
+        st.info("Please select an operation phase above to continue")
+
+def show_phase1_interface():
+    """Display Phase 1 interface for email processing and PDF storage"""
+    st.header("Phase 1: Email Processing & PDF Storage")
+    
+    # Main folder name input
+    st.session_state.main_folder_name = st.text_input(
+        "Enter main Google Drive folder name",
+        value=st.session_state.main_folder_name,
+        help="This will be the main folder where all processed files will be organized",
+        key="main_folder_input"
+    )
+
+    # Configuration Section
+    with st.expander("Search Configuration", expanded=True):
+        # Search Parameters
+        st.subheader("Search Parameters")
+        keywords = st.text_area(
+            "Enter search keywords (one per line)",
+            help="Enter keywords to search for in emails. The search will find emails containing any of these keywords."
+        ).split('\n')
+        keywords = [k.strip() for k in keywords if k.strip()]
+
+        # Password list input
+        passwords = st.text_area(
+            "Enter possible passwords (one per line)",
+            help="Enter passwords that might be needed for PDF files. These will be available for selection for each group of files."
+        ).split('\n')
+        passwords = [p.strip() for p in passwords if p.strip()]
+
+    if not keywords:
+        st.warning("Please enter at least one keyword")
+        return
+
+    # Clear password cache when keywords or passwords change
+    if ('last_keywords' not in st.session_state or st.session_state.last_keywords != keywords or
+        'last_passwords' not in st.session_state or st.session_state.last_passwords != passwords):
+        st.session_state.pdf_handler.clear_password_cache()
+        st.session_state.last_keywords = keywords
+        st.session_state.last_passwords = passwords
+
+    # Initialize session state for matches
+    if 'exact_matches_by_keyword' not in st.session_state:
+        st.session_state.exact_matches_by_keyword = {}
+    if 'content_matches_by_sender' not in st.session_state:
+        st.session_state.content_matches_by_sender = {}
+
+    # Search Emails button
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        search_button = st.button("Search Emails", type="primary", key="search_button")
+
+    if search_button:
+        handle_email_search(keywords)
+
+    # Display Results and Select Attachments
+    if 'search_results' in st.session_state:
+        show_search_results()
+
+def show_phase2_interface():
+    """Display Phase 2 interface for transaction extraction"""
+    st.header("Phase 2: Transaction Extraction")
+    
+    # Initialize folder selection state
+    if 'selected_folders' not in st.session_state:
+        st.session_state.selected_folders = []
+    if 'folder_options' not in st.session_state:
+        st.session_state.folder_options = []
+    
+    # Folder Selection
+    st.subheader("Select Source Folder")
+    
+    # Add option to use default or custom folder
+    folder_source = st.radio(
+        "Select folder source",
+        ["Default Output Folder", "Custom Google Drive Folder"],
+        help="Choose whether to use the default output folder or select a custom folder from Google Drive"
+    )
+    
+    # Handle folder selection and processing
+    handle_folder_selection(folder_source)
+
+def handle_email_search(keywords):
+    """Handle email search and result processing"""
+    with st.spinner("Searching emails..."):
+        try:
+            emails = st.session_state.gmail_handler.search_emails(keywords)
+            if not emails:
+                st.warning("No emails found with PDF attachments matching the keywords")
+                return
+            
+            st.session_state.search_results = emails
+            st.success(f"Found {len(emails)} emails with PDF attachments")
+            
+            # Clear previous matches
+            st.session_state.exact_matches_by_keyword = {}
+            st.session_state.content_matches_by_sender = {}
             st.session_state.processing_complete = False
-        if 'selected_phase' not in st.session_state:
-            st.session_state.selected_phase = None
-        
-        logger.info("Application started")
-        
-        # Create title row with sign out button
-        col1, col2 = st.columns([6, 1])
-        with col1:
-            st.title("Secure Gmail PDF Attachment Processor")
-        with col2:
-            if 'gmail_handler' in st.session_state and st.session_state.gmail_handler:
-                if st.button("Sign Out", type="secondary"):
-                    with st.spinner("Signing out..."):
-                        if sign_out():
-                            st.success("Signed out successfully!")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Error signing out. Please try again.")
-        
-        st.write("Tool for downloading and organizing PDF attachments from Gmail")
-
-        # Initialize session states
-        if 'auth_completed' not in st.session_state:
-            st.session_state.auth_completed = False
-        if 'auth_error' not in st.session_state:
-            st.session_state.auth_error = None
-
-        # Authentication
-        if 'gmail_handler' not in st.session_state or not st.session_state.gmail_handler:
-            auth_container = st.container()
-            with auth_container:
-                if not st.session_state.auth_completed:
-                    st.warning("Please authenticate with Google to continue")
-                    if st.session_state.auth_error:
-                        st.error(st.session_state.auth_error)
-                        st.session_state.auth_error = None
-                    if st.button("Sign In with Google", key="auth_button"):
-                        with st.spinner("Authenticating with Google..."):
-                            if initialize_handlers():
-                                st.success("Authentication successful!")
-                                time.sleep(0.5)
-                                st.rerun()
+            
+            # Group matches by type and keyword/sender
+            for email in emails:
+                if email['match_type'] == 'exact':
+                    # Find matching keyword
+                    matching_keyword = next((k for k in keywords if k.lower() in email['subject'].lower()), 'Other')
+                    if matching_keyword not in st.session_state.exact_matches_by_keyword:
+                        st.session_state.exact_matches_by_keyword[matching_keyword] = []
+                    st.session_state.exact_matches_by_keyword[matching_keyword].append(email)
+                else:
+                    sender_key = f"{email.get('sender_email', 'unknown')}"
+                    if sender_key not in st.session_state.content_matches_by_sender:
+                        st.session_state.content_matches_by_sender[sender_key] = []
+                    st.session_state.content_matches_by_sender[sender_key].append(email)
+            st.rerun()
+        except Exception as e:
+            logger.error(f"Error during email search: {str(e)}")
+            st.error(f"An error occurred while searching emails: {str(e)}")
             return
 
-        # Phase Selection
-        st.subheader("Select Operation Phase")
-        phase_col1, phase_col2 = st.columns(2)
-        with phase_col1:
-            if st.button("Phase 1: Email Processing & PDF Storage", 
-                        type="primary" if st.session_state.selected_phase == "phase1" else "secondary",
-                        use_container_width=True):
-                st.session_state.selected_phase = "phase1"
-                st.rerun()
-        with phase_col2:
-            if st.button("Phase 2: Transaction Extraction", 
-                        type="primary" if st.session_state.selected_phase == "phase2" else "secondary",
-                        use_container_width=True):
-                st.session_state.selected_phase = "phase2"
-                st.rerun()
-
-        if st.session_state.selected_phase == "phase1":
-            # Phase 1: Email Processing & PDF Storage
-            st.header("Phase 1: Email Processing & PDF Storage")
-            
-            # Main folder name input
-            st.session_state.main_folder_name = st.text_input(
-                "Enter main Google Drive folder name",
-                value=st.session_state.main_folder_name,
-                help="This will be the main folder where all processed files will be organized",
-                key="main_folder_input"
-            )
-
-            # Configuration Section
-            with st.expander("Search Configuration", expanded=True):
-                # Search Parameters
-                st.subheader("Search Parameters")
-                keywords = st.text_area(
-                    "Enter search keywords (one per line)",
-                    help="Enter keywords to search for in emails. The search will find emails containing any of these keywords."
-                ).split('\n')
-                keywords = [k.strip() for k in keywords if k.strip()]
-
-                # Password list input
-                passwords = st.text_area(
-                    "Enter possible passwords (one per line)",
-                    help="Enter passwords that might be needed for PDF files. These will be available for selection for each group of files."
-                ).split('\n')
-                passwords = [p.strip() for p in passwords if p.strip()]
-
-            if not keywords:
-                st.warning("Please enter at least one keyword")
-                return
-
-            # Clear password cache when keywords or passwords change
-            if ('last_keywords' not in st.session_state or st.session_state.last_keywords != keywords or
-                'last_passwords' not in st.session_state or st.session_state.last_passwords != passwords):
-                st.session_state.pdf_handler.clear_password_cache()
-                st.session_state.last_keywords = keywords
-                st.session_state.last_passwords = passwords
-
-            # Initialize session state for matches
-            if 'exact_matches_by_keyword' not in st.session_state:
-                st.session_state.exact_matches_by_keyword = {}
-            if 'content_matches_by_sender' not in st.session_state:
-                st.session_state.content_matches_by_sender = {}
-
-            # Search Emails button
-            col1, col2 = st.columns([1, 5])
-            with col1:
-                search_button = st.button("Search Emails", type="primary", key="search_button")
-
-            if search_button:
-                with st.spinner("Searching emails..."):
-                    try:
-                        emails = st.session_state.gmail_handler.search_emails(keywords)
-                        if not emails:
-                            st.warning("No emails found with PDF attachments matching the keywords")
-                            return
-                        
-                        st.session_state.search_results = emails
-                        st.success(f"Found {len(emails)} emails with PDF attachments")
-                        
-                        # Clear previous matches
-                        st.session_state.exact_matches_by_keyword = {}
-                        st.session_state.content_matches_by_sender = {}
-                        st.session_state.processing_complete = False
-                        
-                        # Group matches by type and keyword/sender
-                        for email in emails:
-                            if email['match_type'] == 'exact':
-                                # Find matching keyword
-                                matching_keyword = next((k for k in keywords if k.lower() in email['subject'].lower()), 'Other')
-                                if matching_keyword not in st.session_state.exact_matches_by_keyword:
-                                    st.session_state.exact_matches_by_keyword[matching_keyword] = []
-                                st.session_state.exact_matches_by_keyword[matching_keyword].append(email)
-                            else:
-                                sender_key = f"{email.get('sender_email', 'unknown')}"
-                                if sender_key not in st.session_state.content_matches_by_sender:
-                                    st.session_state.content_matches_by_sender[sender_key] = []
-                                st.session_state.content_matches_by_sender[sender_key].append(email)
+def show_search_results():
+    """Display search results and handle file selection"""
+    # Display exact matches by keyword
+    if st.session_state.exact_matches_by_keyword:
+        st.subheader("Exact Matches")
+        
+        for keyword, matches in st.session_state.exact_matches_by_keyword.items():
+            with st.expander(f"Exact Matches - {keyword}", expanded=True):
+                # Initialize selected attachments for this keyword
+                keyword_key = f"selected_exact_{keyword}"
+                if keyword_key not in st.session_state:
+                    st.session_state[keyword_key] = set()
+                
+                # Create attachment list for this keyword
+                keyword_attachments = []
+                for email in matches:
+                    for attachment in email['attachments']:
+                        keyword_attachments.append({
+                            'subject': email['subject'],
+                            'sender': email['sender'],
+                            'sender_email': email.get('sender_email', 'Unknown'),
+                            'date': format_ist_time(email['date']),
+                            'filename': attachment['filename'],
+                            'size': f"{attachment['size']/1024:.1f} KB",
+                            'id': f"{email['id']}_{attachment['id']}",
+                            'message_id': email['id'],
+                            'attachment_id': attachment['id'],
+                            'email_date': format_file_date(email['date']),
+                            'password_hint': email.get('password_hint', '')
+                        })
+                
+                # Select all / Deselect all buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"Select All - {keyword}", key=f"select_all_{keyword}"):
+                        st.session_state[keyword_key] = {att['id'] for att in keyword_attachments}
                         st.rerun()
-                    except Exception as e:
-                        logger.error(f"Error during email search: {str(e)}")
-                        st.error(f"An error occurred while searching emails: {str(e)}")
-                        return
-
-            # Display Results and Select Attachments
-            if 'search_results' in st.session_state:
-                # Display exact matches by keyword
-                if st.session_state.exact_matches_by_keyword:
-                    st.subheader("Exact Matches")
-                    
-                    for keyword, matches in st.session_state.exact_matches_by_keyword.items():
-                        with st.expander(f"Exact Matches - {keyword}", expanded=True):
-                            # Initialize selected attachments for this keyword
-                            keyword_key = f"selected_exact_{keyword}"
-                            if keyword_key not in st.session_state:
-                                st.session_state[keyword_key] = set()
-                            
-                            # Create attachment list for this keyword
-                            keyword_attachments = []
-                            for email in matches:
-                                for attachment in email['attachments']:
-                                    keyword_attachments.append({
-                                        'subject': email['subject'],
-                                        'sender': email['sender'],
-                                        'sender_email': email.get('sender_email', 'Unknown'),
-                                        'date': format_ist_time(email['date']),
-                                        'filename': attachment['filename'],
-                                        'size': f"{attachment['size']/1024:.1f} KB",
-                                        'id': f"{email['id']}_{attachment['id']}",
-                                        'message_id': email['id'],
-                                        'attachment_id': attachment['id'],
-                                        'email_date': format_file_date(email['date']),
-                                        'password_hint': email.get('password_hint', '')
-                                    })
-                            
-                            # Select all / Deselect all buttons
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                if st.button(f"Select All - {keyword}", key=f"select_all_{keyword}"):
-                                    st.session_state[keyword_key] = {att['id'] for att in keyword_attachments}
-                                    st.rerun()
-                            with col2:
-                                if st.button(f"Deselect All - {keyword}", key=f"deselect_all_{keyword}"):
-                                    st.session_state[keyword_key] = set()
-                                    st.rerun()
-                            
-                            # Display table
-                            edited_df = display_results_table(keyword_attachments, f"exact_{keyword}", keyword_key)
-
-                # Display content matches by sender
-                if st.session_state.content_matches_by_sender:
-                    st.subheader("Content Matches")
-                    
-                    for sender, matches in st.session_state.content_matches_by_sender.items():
-                        with st.expander(f"Content Matches - {sender}", expanded=True):
-                            # Initialize selected attachments for this sender
-                            sender_key = f"selected_content_{sender}"
-                            if sender_key not in st.session_state:
-                                st.session_state[sender_key] = set()
-                            
-                            # Create attachment list for this sender
-                            sender_attachments = []
-                            for email in matches:
-                                for attachment in email['attachments']:
-                                    sender_attachments.append({
-                                        'subject': email.get('subject', 'No Subject'),
-                                        'sender': email.get('sender', 'Unknown'),
-                                        'sender_email': email.get('sender_email', 'Unknown'),
-                                        'date': format_ist_time(email['date']),
-                                        'filename': attachment['filename'],
-                                        'size': f"{attachment['size']/1024:.1f} KB",
-                                        'id': f"{email['id']}_{attachment['id']}",
-                                        'message_id': email['id'],
-                                        'attachment_id': attachment['id'],
-                                        'email_date': format_file_date(email['date']),
-                                        'password_hint': email.get('password_hint', '')
-                                    })
-                            
-                            # Select all / Deselect all buttons
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                if st.button(f"Select All - {sender}"):
-                                    st.session_state[sender_key] = {att['id'] for att in sender_attachments}
-                                    st.rerun()
-                            with col2:
-                                if st.button(f"Deselect All - {sender}"):
-                                    st.session_state[sender_key] = set()
-                                    st.rerun()
-                            
-                            # Display table
-                            edited_df = display_results_table(sender_attachments, f"content_{sender}", sender_key)
-
-                if st.session_state.exact_matches_by_keyword or st.session_state.content_matches_by_sender:
-                    st.subheader("Process Selected Files")
-                    
-                    try:
-                        # Get selected attachments
-                        # Get exact matches
-                        for keyword, matches in st.session_state.exact_matches_by_keyword.items():
-                            keyword_attachments = []
-                            for email in matches:
-                                for attachment in email['attachments']:
-                                    keyword_attachments.append({
-                                        'subject': email['subject'],
-                                        'sender': email['sender'],
-                                        'sender_email': email.get('sender_email', 'Unknown'),
-                                        'date': format_ist_time(email['date']),
-                                        'filename': attachment['filename'],
-                                        'size': f"{attachment['size']/1024:.1f} KB",
-                                        'id': f"{email['id']}_{attachment['id']}",
-                                        'message_id': email['id'],
-                                        'attachment_id': attachment['id'],
-                                        'email_date': format_file_date(email['date']),
-                                        'password_hint': email.get('password_hint', '')
-                                    })
-                            
-                            # Get selected attachments for this keyword
-                            keyword_key = f"selected_exact_{keyword}"
-                            if keyword_key in st.session_state and st.session_state[keyword_key]:
-                                selected_exact_attachments.extend([
-                                    att for att in keyword_attachments 
-                                    if att['id'] in st.session_state[keyword_key]
-                                ])
-                        
-                        # Get content matches
-                        for sender, matches in st.session_state.content_matches_by_sender.items():
-                            sender_attachments = []
-                            for email in matches:
-                                for attachment in email['attachments']:
-                                    sender_attachments.append({
-                                        'subject': email.get('subject', 'No Subject'),
-                                        'sender': email.get('sender', 'Unknown'),
-                                        'sender_email': email.get('sender_email', 'Unknown'),
-                                        'date': format_ist_time(email['date']),
-                                        'filename': attachment['filename'],
-                                        'size': f"{attachment['size']/1024:.1f} KB",
-                                        'id': f"{email['id']}_{attachment['id']}",
-                                        'message_id': email['id'],
-                                        'attachment_id': attachment['id'],
-                                        'email_date': format_file_date(email['date']),
-                                        'password_hint': email.get('password_hint', '')
-                                    })
-                            
-                            # Get selected attachments for this sender
-                            sender_key = f"selected_content_{sender}"
-                            if sender_key in st.session_state and st.session_state[sender_key]:
-                                selected_content_attachments.extend([
-                                    att for att in sender_attachments 
-                                    if att['id'] in st.session_state[sender_key]
-                                ])
-                        
-                        # Show selection summary and process files if any selected
-                        if selected_exact_attachments or selected_content_attachments:
-                            show_selection_summary()
-                            
-                            # Process Selected Files button - centered and prominent
-                            col1, col2, col3 = st.columns([2, 1, 2])
-                            with col2:
-                                if st.button("Process Selected Files", key="process_files_button", type="primary", use_container_width=True):
-                                    st.session_state.processing_started = True
-                                    st.session_state.processing_complete = False
-                                    st.rerun()
-                            
-                            # Handle processing in a separate block to avoid streamlit async issues
-                            if st.session_state.get('processing_started', False) and not st.session_state.get('processing_complete', False):
-                                with st.spinner("Processing files..."):
-                                    try:
-                                        results_by_group = {}
-                                        processed_files = set()
-                                        
-                                        # Process exact matches by keyword
-                                        for keyword, matches in st.session_state.exact_matches_by_keyword.items():
-                                            keyword_attachments = [att for att in selected_exact_attachments if att['subject'].lower().find(keyword.lower()) != -1]
-                                            if keyword_attachments:
-                                                # Find working password for this group
-                                                working_password = get_group_password(keyword_attachments, passwords) if passwords else None
-                                                
-                                                success_count, password_required, processed_files, processed_filenames, folder_path, error_files = process_keyword_batch(
-                                                    keyword,
-                                                    keyword_attachments,
-                                                    None,
-                                                    working_password,
-                                                    processed_files
-                                                )
-                                                
-                                                results_by_group[keyword] = {
-                                                    'success_count': success_count,
-                                                    'password_required': password_required,
-                                                    'processed_files': processed_files,
-                                                    'processed_filenames': processed_filenames,
-                                                    'folder_path': folder_path,
-                                                    'error_files': error_files
-                                                }
-                                        
-                                        # Process content matches by sender
-                                        for sender, matches in st.session_state.content_matches_by_sender.items():
-                                            sender_attachments = [att for att in selected_content_attachments if att['sender_email'] == sender]
-                                            if sender_attachments:
-                                                # Find working password for this group
-                                                working_password = get_group_password(sender_attachments, passwords) if passwords else None
-                                                
-                                                success_count, password_required, processed_files, processed_filenames, folder_path, error_files = process_keyword_batch(
-                                                    f"content_matches_{sender}",
-                                                    sender_attachments,
-                                                    None,
-                                                    working_password,
-                                                    processed_files
-                                                )
-                                                
-                                                results_by_group[f"Content Matches - {sender}"] = {
-                                                    'success_count': success_count,
-                                                    'password_required': password_required,
-                                                    'processed_files': processed_files,
-                                                    'processed_filenames': processed_filenames,
-                                                    'folder_path': folder_path,
-                                                    'error_files': error_files
-                                                }
-                                        
-                                        st.session_state.results_by_group = results_by_group
-                                        st.session_state.processing_complete = True
-                                        st.session_state.processing_started = False
-                                        st.rerun()
-                                        
-                                    except Exception as e:
-                                        logger.error(f"Error in batch processing: {str(e)}")
-                                        st.error(f"An error occurred during processing: {str(e)}")
-                                        st.session_state.processing_complete = True
-                                        st.session_state.processing_started = False
-                            
-                            # Show results after processing is complete
-                            if st.session_state.get('processing_complete', False) and hasattr(st.session_state, 'results_by_group'):
-                                # Show final status
-                                show_final_status(st.session_state.results_by_group)
-                                
-                                # Show detailed results
-                                show_processing_results(st.session_state.results_by_group)
-                        else:
-                            st.warning("Please select at least one file to process")
-                    
-                    except Exception as e:
-                        logger.error(f"Error handling selected files: {str(e)}")
-                        st.error(f"An error occurred while handling selected files: {str(e)}")
+                with col2:
+                    if st.button(f"Deselect All - {keyword}", key=f"deselect_all_{keyword}"):
+                        st.session_state[keyword_key] = set()
+                        st.rerun()
                 
-        elif st.session_state.selected_phase == "phase2":
+                # Display table
+                edited_df = display_results_table(keyword_attachments, f"exact_{keyword}", keyword_key)
+
+    # Display content matches by sender
+    if st.session_state.content_matches_by_sender:
+        st.subheader("Content Matches")
+        
+        for sender, matches in st.session_state.content_matches_by_sender.items():
+            with st.expander(f"Content Matches - {sender}", expanded=True):
+                # Initialize selected attachments for this sender
+                sender_key = f"selected_content_{sender}"
+                if sender_key not in st.session_state:
+                    st.session_state[sender_key] = set()
+                
+                # Create attachment list for this sender
+                sender_attachments = []
+                for email in matches:
+                    for attachment in email['attachments']:
+                        sender_attachments.append({
+                            'subject': email.get('subject', 'No Subject'),
+                            'sender': email.get('sender', 'Unknown'),
+                            'sender_email': email.get('sender_email', 'Unknown'),
+                            'date': format_ist_time(email['date']),
+                            'filename': attachment['filename'],
+                            'size': f"{attachment['size']/1024:.1f} KB",
+                            'id': f"{email['id']}_{attachment['id']}",
+                            'message_id': email['id'],
+                            'attachment_id': attachment['id'],
+                            'email_date': format_file_date(email['date']),
+                            'password_hint': email.get('password_hint', '')
+                        })
+                
+                # Select all / Deselect all buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"Select All - {sender}"):
+                        st.session_state[sender_key] = {att['id'] for att in sender_attachments}
+                        st.rerun()
+                with col2:
+                    if st.button(f"Deselect All - {sender}"):
+                        st.session_state[sender_key] = set()
+                        st.rerun()
+                
+                # Display table
+                edited_df = display_results_table(sender_attachments, f"content_{sender}", sender_key)
+
+    if st.session_state.exact_matches_by_keyword or st.session_state.content_matches_by_sender:
+        handle_file_processing()
+
+def handle_folder_selection(folder_source):
+    """Handle folder selection and processing for Phase 2"""
+    # Clear folder options when source changes
+    if 'last_folder_source' not in st.session_state or st.session_state.last_folder_source != folder_source:
+        st.session_state.folder_options = []
+        st.session_state.last_folder_source = folder_source
+    
+    # Load folders if not already loaded
+    if not st.session_state.folder_options:
+        with st.spinner("Loading folders..."):
             try:
-                # Phase 2: Transaction Extraction
-                st.header("Phase 2: Transaction Extraction")
+                if folder_source == "Default Output Folder":
+                    load_default_folders()
+                else:
+                    load_custom_folders()
                 
-                # Initialize folder selection state
-                if 'selected_folders' not in st.session_state:
-                    st.session_state.selected_folders = []
-                if 'folder_options' not in st.session_state:
-                    st.session_state.folder_options = []
+                # Sort folders by path for better organization
+                if st.session_state.folder_options:
+                    st.session_state.folder_options.sort(key=lambda x: x['display_name'].lower())
                 
-                # Folder Selection
-                st.subheader("Select Source Folder")
+            except Exception as e:
+                handle_folder_loading_error(e)
+                return
+    
+    # Display folder options if available
+    if st.session_state.folder_options:
+        show_folder_selection_interface()
+
+def load_default_folders():
+    """Load folders from the default output location"""
+    base_folder_id = st.session_state.drive_handler.check_folder_exists(st.session_state.main_folder_name)
+    if base_folder_id:
+        default_folders = st.session_state.drive_handler.list_folders(base_folder_id)
+        if default_folders:
+            for folder in default_folders:
+                st.session_state.folder_options.append({
+                    'id': folder['id'],
+                    'name': folder['name'],
+                    'path': st.session_state.main_folder_name,
+                    'display_name': f"{st.session_state.main_folder_name}/{folder['name']}"
+                })
+        else:
+            st.warning("No folders found in the default output directory. Please process some files in Phase 1 first or select a custom folder.")
+    else:
+        st.warning("Default output folder not found. Please process some files in Phase 1 first or select a custom folder.")
+
+def load_custom_folders():
+    """Load folders from custom Google Drive locations"""
+    all_folders = st.session_state.drive_handler.list_all_folders()
+    if all_folders:
+        for folder in all_folders:
+            try:
+                path = st.session_state.drive_handler.get_folder_path(folder['id'])
+                st.session_state.folder_options.append({
+                    'id': folder['id'],
+                    'name': folder['name'],
+                    'path': path,
+                    'display_name': f"{path}/{folder['name']}" if path != "Root" else folder['name']
+                })
+            except Exception as e:
+                logger.error(f"Error getting path for folder {folder['name']}: {str(e)}")
+                continue
+
+def handle_folder_loading_error(error):
+    """Handle errors during folder loading"""
+    error_msg = str(error)
+    logger.error(f"Error loading folders: {error_msg}")
+    if "permissions" in error_msg.lower():
+        st.error("Unable to access Google Drive folders. Please check your permissions.")
+        st.info("""
+        This could be due to:
+        1. Insufficient permissions
+        2. Expired authentication
+        3. Network connectivity issues
+        
+        Try signing out and signing back in.
+        """)
+    else:
+        st.error(f"Error accessing Google Drive: {error_msg}")
+
+def show_folder_selection_interface():
+    """Show the folder selection interface"""
+    # Create selection options with search/filter
+    st.subheader("Select Folders to Process")
+    
+    # Add search box for filtering folders
+    search_term = st.text_input(
+        "🔍 Search folders",
+        help="Type to filter folders by name or path",
+        placeholder="Type to search folders..."
+    )
+    
+    # Filter folders based on search term
+    filtered_options = st.session_state.folder_options
+    if search_term:
+        search_term = search_term.lower()
+        filtered_options = [
+            f for f in st.session_state.folder_options 
+            if search_term in f['display_name'].lower()
+        ]
+    
+    # Show folder count
+    st.caption(f"Found {len(filtered_options)} of {len(st.session_state.folder_options)} folders")
+    
+    # Group folders by path for better organization
+    path_groups = {}
+    for folder in filtered_options:
+        path = folder['path']
+        if path not in path_groups:
+            path_groups[path] = []
+        path_groups[path].append(folder)
+    
+    show_folder_views(path_groups, filtered_options)
+
+def show_folder_views(path_groups, filtered_options):
+    """Show folder selection views (tree and list)"""
+    # Create tabs for different views
+    tab1, tab2 = st.tabs(["📂 Tree View", "📋 List View"])
+    
+    with tab1:
+        show_tree_view(path_groups)
+    
+    with tab2:
+        show_list_view(filtered_options)
+    
+    # Show selection summary
+    if st.session_state.selected_folders:
+        show_folder_selection_summary()
+
+def show_tree_view(path_groups):
+    """Show folders in a tree-like structure"""
+    for path, folders in sorted(path_groups.items()):
+        if path == "Root":
+            st.markdown("### 📂 Root Level")
+        else:
+            st.markdown(f"### 📂 {path}")
+        
+        # Create a grid of folder checkboxes
+        cols = st.columns(3)
+        for idx, folder in enumerate(sorted(folders, key=lambda x: x['name'].lower())):
+            with cols[idx % 3]:
+                folder_key = f"folder_{folder['id']}"
+                if folder_key not in st.session_state:
+                    st.session_state[folder_key] = folder['display_name'] in st.session_state.selected_folders
                 
-                # Add option to use default or custom folder
-                folder_source = st.radio(
-                    "Select folder source",
-                    ["Default Output Folder", "Custom Google Drive Folder"],
-                    help="Choose whether to use the default output folder or select a custom folder from Google Drive"
+                # Update checkbox state
+                st.session_state[folder_key] = st.checkbox(
+                    f"📁 {folder['name']}",
+                    value=st.session_state[folder_key],
+                    key=f"{folder_key}_{idx}"
                 )
                 
-                # Clear folder options when source changes
-                if 'last_folder_source' not in st.session_state or st.session_state.last_folder_source != folder_source:
-                    st.session_state.folder_options = []
-                    st.session_state.last_folder_source = folder_source
-                
-                # Load folders if not already loaded
-                if not st.session_state.folder_options:
-                    with st.spinner("Loading folders..."):
-                        try:
-                            if folder_source == "Default Output Folder":
-                                # Get available folders from default location
-                                base_folder_id = st.session_state.drive_handler.check_folder_exists(st.session_state.main_folder_name)
-                                if base_folder_id:
-                                    default_folders = st.session_state.drive_handler.list_folders(base_folder_id)
-                                    if default_folders:
-                                        for folder in default_folders:
-                                            st.session_state.folder_options.append({
-                                                'id': folder['id'],
-                                                'name': folder['name'],
-                                                'path': st.session_state.main_folder_name,
-                                                'display_name': f"{st.session_state.main_folder_name}/{folder['name']}"
-                                            })
-                                    else:
-                                        st.warning("No folders found in the default output directory. Please process some files in Phase 1 first or select a custom folder.")
-                                else:
-                                    st.warning("Default output folder not found. Please process some files in Phase 1 first or select a custom folder.")
-                            else:
-                                # Get root level folders
-                                all_folders = st.session_state.drive_handler.list_all_folders()
-                                if all_folders:
-                                    # Create a hierarchical folder structure for display
-                                    for folder in all_folders:
-                                        try:
-                                            # Get folder path with progress indicator
-                                            path = st.session_state.drive_handler.get_folder_path(folder['id'])
-                                            st.session_state.folder_options.append({
-                                                'id': folder['id'],
-                                                'name': folder['name'],
-                                                'path': path,
-                                                'display_name': f"{path}/{folder['name']}" if path != "Root" else folder['name']
-                                            })
-                                        except Exception as e:
-                                            logger.error(f"Error getting path for folder {folder['name']}: {str(e)}")
-                                            continue
-                            
-                            # Sort folders by path for better organization
-                            if st.session_state.folder_options:
-                                st.session_state.folder_options.sort(key=lambda x: x['display_name'].lower())
-                            
-                        except Exception as e:
-                            error_msg = str(e)
-                            logger.error(f"Error loading folders: {error_msg}")
-                            if "permissions" in error_msg.lower():
-                                st.error("Unable to access Google Drive folders. Please check your permissions.")
-                                st.info("""
-                                This could be due to:
-                                1. Insufficient permissions
-                                2. Expired authentication
-                                3. Network connectivity issues
-                                
-                                Try signing out and signing back in.
-                                """)
-                            else:
-                                st.error(f"Error accessing Google Drive: {error_msg}")
-                            return
-                
-                # Display folder options if available
-                if st.session_state.folder_options:
-                    # Create selection options with search/filter
-                    st.subheader("Select Folders to Process")
-                    
-                    # Add search box for filtering folders
-                    search_term = st.text_input(
-                        "🔍 Search folders",
-                        help="Type to filter folders by name or path",
-                        placeholder="Type to search folders..."
-                    )
-                    
-                    # Filter folders based on search term
-                    filtered_options = st.session_state.folder_options
-                    if search_term:
-                        search_term = search_term.lower()
-                        filtered_options = [
-                            f for f in st.session_state.folder_options 
-                            if search_term in f['display_name'].lower()
-                        ]
-                    
-                    # Show folder count
-                    st.caption(f"Found {len(filtered_options)} of {len(st.session_state.folder_options)} folders")
-                    
-                    # Group folders by path for better organization
-                    path_groups = {}
-                    for folder in filtered_options:
-                        path = folder['path']
-                        if path not in path_groups:
-                            path_groups[path] = []
-                        path_groups[path].append(folder)
-                    
-                    # Create tabs for different views
-                    tab1, tab2 = st.tabs(["📂 Tree View", "📋 List View"])
-                    
-                    with tab1:
-                        # Show folders in a tree-like structure
-                        for path, folders in sorted(path_groups.items()):
-                            if path == "Root":
-                                st.markdown("### 📂 Root Level")
-                            else:
-                                st.markdown(f"### 📂 {path}")
-                            
-                            # Create a grid of folder checkboxes
-                            cols = st.columns(3)
-                            for idx, folder in enumerate(sorted(folders, key=lambda x: x['name'].lower())):
-                                with cols[idx % 3]:
-                                    folder_key = f"folder_{folder['id']}"
-                                    if folder_key not in st.session_state:
-                                        st.session_state[folder_key] = folder['display_name'] in st.session_state.selected_folders
-                                    
-                                    # Update checkbox state
-                                    st.session_state[folder_key] = st.checkbox(
-                                        f"📁 {folder['name']}",
-                                        value=st.session_state[folder_key],
-                                        key=f"{folder_key}_{idx}"
-                                    )
-                                    
-                                    # Update selected folders list
-                                    if st.session_state[folder_key]:
-                                        if folder['display_name'] not in st.session_state.selected_folders:
-                                            st.session_state.selected_folders.append(folder['display_name'])
-                                    else:
-                                        if folder['display_name'] in st.session_state.selected_folders:
-                                            st.session_state.selected_folders.remove(folder['display_name'])
-                    
-                    with tab2:
-                        # Show folders in a simple list with select all option
-                        col1, col2 = st.columns([1, 4])
-                        with col1:
-                            if st.button("Select All", use_container_width=True, key="select_all_folders"):
-                                st.session_state.selected_folders = [f['display_name'] for f in filtered_options]
-                                for folder in filtered_options:
-                                    st.session_state[f"folder_{folder['id']}"] = True
-                                st.rerun()
-                        with col2:
-                            if st.button("Clear Selection", use_container_width=True, key="clear_all_folders"):
-                                st.session_state.selected_folders = []
-                                for folder in filtered_options:
-                                    st.session_state[f"folder_{folder['id']}"] = False
-                                st.rerun()
-                        
-                        # Show folders in a table format
-                        folder_data = []
-                        for folder in filtered_options:
-                            folder_data.append({
-                                "Selected": "✓" if folder['display_name'] in st.session_state.selected_folders else "",
-                                "Folder Name": folder['name'],
-                                "Path": folder['path'] if folder['path'] != "Root" else "/"
-                            })
-                        if folder_data:
-                            st.table(folder_data)
-                    
-                    # Show selection summary
-                    if st.session_state.selected_folders:
-                        st.markdown("### 📋 Selected Folders")
-                        st.info(f"Selected {len(st.session_state.selected_folders)} folders for processing")
-                        
-                        # Show selected folders in a collapsible section
-                        with st.expander("View Selected Folders", expanded=True):
-                            for folder_name in st.session_state.selected_folders:
-                                folder_info = next(f for f in st.session_state.folder_options if f['display_name'] == folder_name)
-                                st.markdown(f"""
-                                - 📁 **{folder_info['name']}**
-                                  - Path: `{folder_info['path']}`
-                                  - Full Path: `{folder_info['display_name']}`
-                                """)
-                        
-                        # Add the process button only if folders are selected
-                        col1, col2, col3 = st.columns([2, 2, 2])
-                        with col2:
-                            if st.button(
-                                "🔄 Process Selected Folders",
-                                type="primary",
-                                use_container_width=True,
-                                help="Start processing the selected folders",
-                                key="process_selected_folders"
-                            ):
-                                try:
-                                    # Verify sheets handler is initialized
-                                    if not hasattr(st.session_state, 'sheets_handler') or not st.session_state.sheets_handler:
-                                        st.error("Google Sheets handler is not initialized. Please try signing out and signing back in.")
-                                        return
-                                    
-                                    # Create or get spreadsheet
-                                    if not hasattr(st.session_state, 'spreadsheet_id') or not st.session_state.spreadsheet_id:
-                                        try:
-                                            st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("Credit Card Transactions")
-                                            if not st.session_state.spreadsheet_id:
-                                                st.error("Failed to create Google Sheet for transactions. Please check your permissions.")
-                                                return
-                                        except Exception as e:
-                                            logger.error(f"Error creating spreadsheet: {str(e)}")
-                                            st.error(f"Failed to create spreadsheet: {str(e)}")
-                                            return
-                                    
-                                    # Get selected folder info
-                                    selected_folder_info = [
-                                        next(f for f in st.session_state.folder_options if f['display_name'] == folder_name)
-                                        for folder_name in st.session_state.selected_folders
-                                    ]
-                                    
-                                    total_files = 0
-                                    processed_files = 0
-                                    
-                                    # Create a container for folder processing status
-                                    status_container = st.container()
-                                    
-                                    # Process each selected folder
-                                    for folder_info in selected_folder_info:
-                                        with status_container:
-                                            # Create an expander for each folder
-                                            with st.expander(f"📁 {folder_info['display_name']}", expanded=True):
-                                                # Show folder path and details
-                                                st.markdown(f"""
-                                                **Processing Folder:**
-                                                - Path: `{folder_info['path']}`
-                                                - Name: `{folder_info['name']}`
-                                                """)
-                                                
-                                                # Get PDFs in folder
-                                                pdfs = st.session_state.drive_handler.list_files(folder_info['id'], file_type='application/pdf')
-                                                if pdfs:
-                                                    total_files += len(pdfs)
-                                                    st.info(f"Found {len(pdfs)} PDF files")
-                                                    
-                                                    # Create progress bar for this folder
-                                                    progress_bar = st.progress(0)
-                                                    status_text = st.empty()
-                                                    
-                                                    # Create columns for file status
-                                                    col1, col2 = st.columns([3, 1])
-                                                    with col1:
-                                                        file_status = st.empty()
-                                                    with col2:
-                                                        count_status = st.empty()
-                                                    
-                                                    folder_processed = 0
-                                                    transactions_data = []
-                                                    
-                                                    for idx, pdf in enumerate(pdfs):
-                                                        try:
-                                                            # Update progress
-                                                            progress = (idx + 1) / len(pdfs)
-                                                            progress_bar.progress(progress)
-                                                            status_text.text(f"Processing file {idx + 1} of {len(pdfs)}")
-                                                            
-                                                            # Download PDF
-                                                            file_data = st.session_state.drive_handler.download_file(pdf['id'])
-                                                            if file_data:
-                                                                # Extract transactions
-                                                                bank_name, card_type, card_number, transactions = st.session_state.pdf_handler.process_pdf(
-                                                                    file_data,
-                                                                    folder_info['name'],
-                                                                    None,
-                                                                    None
-                                                                )
-                                                                
-                                                                if transactions:
-                                                                    # Add file info to transactions
-                                                                    file_transactions = []
-                                                                    for trans in transactions:
-                                                                        trans['Source File'] = pdf['name']
-                                                                        trans['Bank Name'] = bank_name
-                                                                        trans['Card Type'] = card_type
-                                                                        trans['Card Number'] = card_number
-                                                                        file_transactions.append(trans)
-                                                                    
-                                                                    transactions_data.extend(file_transactions)
-                                                                    folder_processed += 1
-                                                                    file_status.markdown(f"✅ Processed: `{pdf['name']}`")
-                                                                else:
-                                                                    file_status.markdown(f"⚠️ No transactions found in: `{pdf['name']}`")
-                                                                
-                                                                # Update count
-                                                                count_status.markdown(f"**{folder_processed}/{len(pdfs)}**")
-                                                        
-                                                        except Exception as e:
-                                                            logger.error(f"Error processing file {pdf['name']}: {str(e)}")
-                                                            file_status.markdown(f"❌ Error processing `{pdf['name']}`: {str(e)}")
-                                                    
-                                                    # Write transactions to sheet
-                                                    if transactions_data:
-                                                        try:
-                                                            # Create or get sheet for this folder
-                                                            sheet_name = folder_info['name'][:100]  # Sheets API has 100 char limit
-                                                            st.session_state.sheets_handler.create_sheet(
-                                                                st.session_state.spreadsheet_id,
-                                                                sheet_name
-                                                            )
-                                                            
-                                                            # Write transactions with formatting
-                                                            success = st.session_state.sheets_handler.write_transactions_with_formatting(
-                                                                st.session_state.spreadsheet_id,
-                                                                sheet_name,
-                                                                transactions_data
-                                                            )
-                                                            
-                                                            if success:
-                                                                processed_files += folder_processed
-                                                                st.success(f"Successfully wrote {len(transactions_data)} transactions to sheet")
-                                                            else:
-                                                                st.error("Failed to write transactions to sheet")
-                                                        
-                                                        except Exception as e:
-                                                            logger.error(f"Error writing to sheet: {str(e)}")
-                                                            st.error(f"Error writing to sheet: {str(e)}")
-                                                    
-                                                    # Show folder summary
-                                                    if folder_processed > 0:
-                                                        st.success(f"Successfully processed {folder_processed} out of {len(pdfs)} files")
-                                                    else:
-                                                        st.warning("No files were processed successfully in this folder")
-                                                else:
-                                                    st.warning("No PDF files found in this folder")
-                                    
-                                    # Show final results
-                                    if processed_files > 0:
-                                        st.success(f"Total: Successfully processed {processed_files} out of {total_files} files")
-                                        sheet_url = f"https://docs.google.com/spreadsheets/d/{st.session_state.spreadsheet_id}"
-                                        st.markdown(f"[View all transactions in Google Sheets]({sheet_url})")
-                                    else:
-                                        st.warning("No files were processed successfully")
-                                
-                                except Exception as e:
-                                    logger.error(f"Error during transaction extraction: {str(e)}")
-                                    st.error(f"An error occurred: {str(e)}")
-                    else:
-                        st.warning("Please select at least one folder to process")
+                # Update selected folders list
+                if st.session_state[folder_key]:
+                    if folder['display_name'] not in st.session_state.selected_folders:
+                        st.session_state.selected_folders.append(folder['display_name'])
                 else:
-                    st.warning("No accessible folders found. Please check your Google Drive permissions.")
-            
-            except Exception as e:
-                logger.error(f"Error in Phase 2: {str(e)}")
-                st.error(f"An error occurred in Phase 2: {str(e)}")
-        
-        else:
-            st.info("Please select an operation phase above to continue")
+                    if folder['display_name'] in st.session_state.selected_folders:
+                        st.session_state.selected_folders.remove(folder['display_name'])
 
+def show_list_view(filtered_options):
+    """Show folders in a list view with select all option"""
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("Select All", use_container_width=True, key="select_all_folders"):
+            st.session_state.selected_folders = [f['display_name'] for f in filtered_options]
+            for folder in filtered_options:
+                st.session_state[f"folder_{folder['id']}"] = True
+            st.rerun()
+    with col2:
+        if st.button("Clear Selection", use_container_width=True, key="clear_all_folders"):
+            st.session_state.selected_folders = []
+            for folder in filtered_options:
+                st.session_state[f"folder_{folder['id']}"] = False
+            st.rerun()
+    
+    # Show folders in a table format
+    folder_data = []
+    for folder in filtered_options:
+        folder_data.append({
+            "Selected": "✓" if folder['display_name'] in st.session_state.selected_folders else "",
+            "Folder Name": folder['name'],
+            "Path": folder['path'] if folder['path'] != "Root" else "/"
+        })
+    if folder_data:
+        st.table(folder_data)
+
+def show_folder_selection_summary():
+    """Show summary of selected folders"""
+    st.markdown("### 📋 Selected Folders")
+    st.info(f"Selected {len(st.session_state.selected_folders)} folders for processing")
+    
+    # Show selected folders in a collapsible section
+    with st.expander("View Selected Folders", expanded=True):
+        for folder_name in st.session_state.selected_folders:
+            folder_info = next(f for f in st.session_state.folder_options if f['display_name'] == folder_name)
+            st.markdown(f"""
+            - 📁 **{folder_info['name']}**
+              - Path: `{folder_info['path']}`
+              - Full Path: `{folder_info['display_name']}`
+            """)
+    
+    show_process_button()
+
+def show_process_button():
+    """Show the process button for selected folders"""
+    col1, col2, col3 = st.columns([2, 2, 2])
+    with col2:
+        if st.button(
+            "🔄 Process Selected Folders",
+            type="primary",
+            use_container_width=True,
+            help="Start processing the selected folders",
+            key="process_selected_folders"
+        ):
+            process_selected_folders()
+
+def process_selected_folders():
+    """Process the selected folders"""
+    try:
+        # Verify sheets handler is initialized
+        if not verify_sheets_handler():
+            return
+        
+        # Get selected folder info
+        selected_folder_info = [
+            next(f for f in st.session_state.folder_options if f['display_name'] == folder_name)
+            for folder_name in st.session_state.selected_folders
+        ]
+        
+        process_folders(selected_folder_info)
+        
     except Exception as e:
-        logger.error(f"Error in main function: {str(e)}")
-        st.error("An unexpected error occurred. Please try refreshing the page or contact support.")
+        logger.error(f"Error during transaction extraction: {str(e)}")
+        st.error(f"An error occurred: {str(e)}")
+
+def verify_sheets_handler():
+    """Verify that the sheets handler is properly initialized"""
+    if not hasattr(st.session_state, 'sheets_handler') or not st.session_state.sheets_handler:
+        st.error("Google Sheets handler is not initialized. Please try signing out and signing back in.")
+        return False
+    
+    if not st.session_state.sheets_handler.ensure_initialized():
+        st.error("Google Sheets handler is not working properly. Please try signing out and signing back in.")
+        # Clear the handler to force re-initialization
+        st.session_state.sheets_handler = None
+        return False
+    
+    # Create or get spreadsheet
+    if not hasattr(st.session_state, 'spreadsheet_id') or not st.session_state.spreadsheet_id:
+        try:
+            st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("Credit Card Transactions")
+            if not st.session_state.spreadsheet_id:
+                st.error("Failed to create Google Sheet for transactions. Please check your permissions.")
+                return False
+        except Exception as e:
+            logger.error(f"Error creating spreadsheet: {str(e)}")
+            st.error(f"Failed to create spreadsheet: {str(e)}")
+            return False
+    
+    return True
+
+def process_folders(selected_folder_info):
+    """Process the selected folders"""
+    total_files = 0
+    processed_files = 0
+    
+    # Create a container for folder processing status
+    status_container = st.container()
+    
+    # Process each selected folder
+    for folder_info in selected_folder_info:
+        with status_container:
+            process_single_folder(folder_info, total_files, processed_files)
+
+def process_single_folder(folder_info, total_files, processed_files):
+    """Process a single folder"""
+    # Create an expander for each folder
+    with st.expander(f"📁 {folder_info['display_name']}", expanded=True):
+        # Show folder path and details
+        st.markdown(f"""
+        **Processing Folder:**
+        - Path: `{folder_info['path']}`
+        - Name: `{folder_info['name']}`
+        """)
+        
+        # Get PDFs in folder
+        pdfs = st.session_state.drive_handler.list_files(folder_info['id'], file_type='application/pdf')
+        if pdfs:
+            process_folder_pdfs(pdfs, folder_info)
+        else:
+            st.warning("No PDF files found in this folder")
+
+def process_folder_pdfs(pdfs, folder_info):
+    """Process PDFs in a folder"""
+    st.info(f"Found {len(pdfs)} PDF files")
+    
+    # Create progress bar for this folder
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    # Create columns for file status
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        file_status = st.empty()
+    with col2:
+        count_status = st.empty()
+    
+    folder_processed = 0
+    transactions_data = []
+    
+    for idx, pdf in enumerate(pdfs):
+        process_single_pdf(pdf, idx, len(pdfs), progress_bar, status_text,
+                         file_status, count_status, folder_processed,
+                         transactions_data, folder_info)
+    
+    # Write transactions to sheet if any were found
+    if transactions_data:
+        write_transactions_to_sheet(transactions_data, folder_info, folder_processed, len(pdfs))
+
+def process_single_pdf(pdf, idx, total_pdfs, progress_bar, status_text,
+                      file_status, count_status, folder_processed,
+                      transactions_data, folder_info):
+    """Process a single PDF file"""
+    try:
+        # Update progress
+        progress = (idx + 1) / total_pdfs
+        progress_bar.progress(progress)
+        status_text.text(f"Processing file {idx + 1} of {total_pdfs}")
+        
+        # Download PDF
+        file_data = st.session_state.drive_handler.download_file(pdf['id'])
+        if file_data:
+            # Extract transactions
+            bank_name, card_type, card_number, transactions = st.session_state.pdf_handler.process_pdf(
+                file_data,
+                folder_info['name'],
+                None,
+                None
+            )
+            
+            if transactions:
+                # Add file info to transactions
+                file_transactions = []
+                for trans in transactions:
+                    trans['Source File'] = pdf['name']
+                    trans['Bank Name'] = bank_name
+                    trans['Card Type'] = card_type
+                    trans['Card Number'] = card_number
+                    file_transactions.append(trans)
+                
+                transactions_data.extend(file_transactions)
+                folder_processed += 1
+                file_status.markdown(f"✅ Processed: `{pdf['name']}`")
+            else:
+                file_status.markdown(f"⚠️ No transactions found in: `{pdf['name']}`")
+            
+            # Update count
+            count_status.markdown(f"**{folder_processed}/{total_pdfs}**")
+            
+    except Exception as e:
+        logger.error(f"Error processing file {pdf['name']}: {str(e)}")
+        file_status.markdown(f"❌ Error processing `{pdf['name']}`: {str(e)}")
+
+def write_transactions_to_sheet(transactions_data, folder_info, processed_count, total_count):
+    """Write extracted transactions to Google Sheets"""
+    try:
+        # Create or get sheet for this folder
+        sheet_name = folder_info['name'][:100]  # Sheets API has 100 char limit
+        st.session_state.sheets_handler.create_sheet(
+            st.session_state.spreadsheet_id,
+            sheet_name
+        )
+        
+        # Write transactions with formatting
+        success = st.session_state.sheets_handler.write_transactions_with_formatting(
+            st.session_state.spreadsheet_id,
+            sheet_name,
+            transactions_data
+        )
+        
+        if success:
+            st.success(f"Successfully wrote {len(transactions_data)} transactions to sheet")
+            show_success_links(processed_count, total_count)
+        else:
+            st.error("Failed to write transactions to sheet")
+        
+    except Exception as e:
+        logger.error(f"Error writing to sheet: {str(e)}")
+        st.error(f"Error writing to sheet: {str(e)}")
+
+def show_success_links(processed_count, total_count):
+    """Show success message and links after processing"""
+    if processed_count > 0:
+        st.success(f"Successfully processed {processed_count} out of {total_count} files")
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{st.session_state.spreadsheet_id}"
+        st.markdown(f"[View all transactions in Google Sheets]({sheet_url})")
+    else:
+        st.warning("No files were processed successfully")
+
+def main():
+    """Main function to run the Streamlit app"""
+    try:
+        # Initialize security handler if not already done
+        if 'security' not in st.session_state:
+            st.session_state.security = SecurityHandler()
+        
+        # Check if authentication is required
+        if not st.session_state.get('auth_completed', False):
+            authenticate_user()
+            return
+            
+        # Verify handlers are properly initialized
+        if not all(handler in st.session_state for handler in ['gmail_handler', 'drive_handler', 'sheets_handler']):
+            st.error("Service handlers not properly initialized. Please sign out and sign back in.")
+            show_sign_out_button()
+            return
+            
+        try:
+            # Verify sheets handler is working
+            if not st.session_state.sheets_handler.ensure_initialized():
+                st.error("Google Sheets handler not properly initialized. Please sign out and sign back in.")
+                show_sign_out_button()
+                return
+                
+            # Get or create the spreadsheet
+            if not hasattr(st.session_state, 'spreadsheet_id'):
+                try:
+                    spreadsheet = st.session_state.sheets_handler.create_or_get_spreadsheet()
+                    if spreadsheet:
+                        st.session_state.spreadsheet_id = spreadsheet['spreadsheetId']
+                    else:
+                        st.error("Failed to create or get spreadsheet. Please try again.")
+                        return
+                except Exception as e:
+                    logger.error(f"Error creating/getting spreadsheet: {str(e)}")
+                    st.error("Failed to access Google Sheets. Please check your permissions and try again.")
+                    return
+            
+            # Rest of the main app logic
+            show_app_header()
+            show_sign_out_button()
+            
+            # Show the main app interface
+            show_main_interface()
+            
+        except Exception as e:
+            logger.error(f"Error in sheets handler verification: {str(e)}")
+            st.error("Error accessing Google services. Please sign out and sign back in.")
+            show_sign_out_button()
+            return
+            
+    except Exception as e:
+        logger.error(f"Error in main app: {str(e)}")
+        st.error(f"An unexpected error occurred: {str(e)}")
+        show_sign_out_button()
         return
 
 if __name__ == "__main__":

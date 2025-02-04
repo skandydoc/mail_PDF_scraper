@@ -39,6 +39,16 @@ class SheetsHandler:
             logger.error(f"Sheets handler verification failed: {str(e)}")
             return False
     
+    def ensure_initialized(self) -> bool:
+        """Ensure the handler is initialized and working"""
+        try:
+            if not hasattr(self, 'service'):
+                return False
+            return self.verify_initialization()
+        except Exception as e:
+            logger.error(f"Sheets handler initialization check failed: {str(e)}")
+            return False
+    
     def create_spreadsheet(self, title: str) -> Optional[str]:
         """
         Create a new Google Sheets spreadsheet
