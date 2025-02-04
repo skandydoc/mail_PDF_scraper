@@ -197,7 +197,7 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
             return 0, [], processed_files, [], "", []
             
         # Create subfolder for keyword
-        keyword_folder_name = f"{keyword.strip()}_files"
+        keyword_folder_name = keyword.strip()  # Use exact keyword as folder name
         keyword_folder_id = st.session_state.drive_handler.create_folder(
             keyword_folder_name, 
             parent_folder_id
@@ -206,6 +206,13 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
         if not keyword_folder_id:
             st.error(f"Failed to create folder for keyword: {keyword}")
             return 0, [], processed_files, [], "", []
+        
+        # Create or get spreadsheet
+        if not st.session_state.spreadsheet_id:
+            st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("PDF Processor Transactions")
+            if not st.session_state.spreadsheet_id:
+                st.error("Failed to create Google Sheet for transactions")
+                return 0, [], processed_files, [], "", []
             
         # Process files
         success_count, password_required, updated_processed_files, processed_filenames, error_files = process_pdf_batch(
@@ -233,6 +240,7 @@ def initialize_handlers():
         if auth_success:
             st.session_state.gmail_handler = gmail_handler
             st.session_state.drive_handler = DriveHandler(gmail_handler.creds)
+            st.session_state.sheets_handler = SheetsHandler(gmail_handler.creds)
             
             # Create secure session
             user_info = gmail_handler.service.users().getProfile(userId='me').execute()

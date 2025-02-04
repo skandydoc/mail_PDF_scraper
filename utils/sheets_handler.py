@@ -90,6 +90,9 @@ class SheetsHandler:
             
             if sheet_id is None:
                 sheet_id = self.create_sheet(spreadsheet_id, sheet_name)
+                if sheet_id is None:
+                    logger.error(f"Failed to create sheet: {sheet_name}")
+                    return False
             
             # Get the last row in the sheet
             range_name = f"{sheet_name}!A:A"
@@ -99,8 +102,15 @@ class SheetsHandler:
             ).execute()
             last_row = len(result.get('values', [])) + 1
             
-            # Prepare the header row with file name
-            header = [[file_name]]
+            # Add spacing if not first entry
+            if last_row > 1:
+                last_row += 3  # Add extra spacing between file entries
+            
+            # Prepare the header rows
+            header = [
+                [file_name],  # File name row
+                ["Date", "Description", "Amount", "Category"]  # Column headers
+            ]
             header_range = f"{sheet_name}!A{last_row}"
             
             # Prepare transaction data
@@ -114,10 +124,13 @@ class SheetsHandler:
                 ]
                 data.append(row)
             
-            # Prepare the requests
+            # Add empty rows after data
+            empty_rows = [[""] * 4] * 3
+            
+            # Prepare all formatting requests
             requests = []
             
-            # Format header row with pastel green background
+            # Format file name row with pastel green background
             requests.append({
                 'updateCells': {
                     'rows': [{
@@ -129,8 +142,11 @@ class SheetsHandler:
                                     'blue': 0.85
                                 },
                                 'textFormat': {
-                                    'bold': True
-                                }
+                                    'bold': True,
+                                    'fontSize': 12
+                                },
+                                'horizontalAlignment': 'LEFT',
+                                'verticalAlignment': 'MIDDLE'
                             }
                         }]
                     }],
@@ -140,14 +156,71 @@ class SheetsHandler:
                         'startRowIndex': last_row - 1,
                         'endRowIndex': last_row,
                         'startColumnIndex': 0,
-                        'endColumnIndex': 1
+                        'endColumnIndex': 4
+                    }
+                }
+            })
+            
+            # Format column headers
+            requests.append({
+                'updateCells': {
+                    'rows': [{
+                        'values': [
+                            {'userEnteredFormat': {'textFormat': {'bold': True}}} for _ in range(4)
+                        ]
+                    }],
+                    'fields': 'userEnteredFormat',
+                    'range': {
+                        'sheetId': sheet_id,
+                        'startRowIndex': last_row,
+                        'endRowIndex': last_row + 1,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': 4
+                    }
+                }
+            })
+            
+            # Format empty rows with light background
+            if data:  # Only if we have data
+                requests.append({
+                    'updateCells': {
+                        'rows': [{
+                            'values': [{
+                                'userEnteredFormat': {
+                                    'backgroundColor': {
+                                        'red': 0.95,
+                                        'green': 0.95,
+                                        'blue': 0.95
+                                    }
+                                }
+                            } for _ in range(4)]
+                        } for _ in range(3)],  # 3 empty rows
+                        'fields': 'userEnteredFormat',
+                        'range': {
+                            'sheetId': sheet_id,
+                            'startRowIndex': last_row + len(header) + len(data),
+                            'endRowIndex': last_row + len(header) + len(data) + 3,
+                            'startColumnIndex': 0,
+                            'endColumnIndex': 4
+                        }
+                    }
+                })
+            
+            # Auto-resize columns
+            requests.append({
+                'autoResizeDimensions': {
+                    'dimensions': {
+                        'sheetId': sheet_id,
+                        'dimension': 'COLUMNS',
+                        'startIndex': 0,
+                        'endIndex': 4
                     }
                 }
             })
             
             # Write the data
             body = {
-                'values': header + data + [[''] * 4] * 3  # Add 3 empty rows after data
+                'values': header + data + empty_rows
             }
             
             self.service.spreadsheets().values().update(
