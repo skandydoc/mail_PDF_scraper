@@ -196,13 +196,13 @@ def process_keyword_batch(keyword: str, attachments, parent_folder_id: str, pass
         if not attachments:
             return 0, [], processed_files, [], "", []
             
-        # First, create or get the base output folder
-        base_folder_name = "PDF Processor Output"
+        # Use main folder name from session state
+        base_folder_name = st.session_state.main_folder_name
         base_folder_id = st.session_state.drive_handler.check_folder_exists(base_folder_name)
         if not base_folder_id:
             base_folder_id = st.session_state.drive_handler.create_folder(base_folder_name)
             if not base_folder_id:
-                st.error("Failed to create base output folder")
+                st.error(f"Failed to create base output folder: {base_folder_name}")
                 return 0, [], processed_files, [], "", []
         
         # Then create subfolder for keyword inside the base folder
@@ -735,6 +735,8 @@ def main():
             st.session_state.auth_completed = False
         if 'auth_error' not in st.session_state:
             st.session_state.auth_error = None
+        if 'main_folder_name' not in st.session_state:
+            st.session_state.main_folder_name = "PDF Processor Output"
 
         # Authentication
         if 'gmail_handler' not in st.session_state or not st.session_state.gmail_handler:
@@ -755,6 +757,13 @@ def main():
                                 time.sleep(0.5)  # Brief pause to show success message
                                 st.rerun()
             return
+
+        # Main folder name input
+        st.session_state.main_folder_name = st.text_input(
+            "Enter main Google Drive folder name",
+            value=st.session_state.main_folder_name,
+            help="This will be the main folder where all processed files will be organized"
+        )
 
         # Search Parameters
         st.subheader("Search Parameters")
@@ -934,12 +943,11 @@ def main():
                     st.warning("Unable to display selection summary. Please try refreshing the page.")
                 
                 if selected_exact_attachments or selected_content_attachments:
-                    st.subheader("Process Selected Files")
-                    
                     # Show selection summary
                     show_selection_summary()
                     
-                    if st.button("Process Selected Files"):
+                    # Process Selected Files button
+                    if st.button("Process Selected Files", key="process_files_button", type="primary"):
                         with st.spinner("Processing files..."):
                             try:
                                 results_by_group = {}
