@@ -1203,7 +1203,11 @@ def main():
                 st.subheader("Select Folders to Process")
                 
                 # Add search box for filtering folders
-                search_term = st.text_input("Search folders", help="Type to filter folders by name or path")
+                search_term = st.text_input(
+                    "🔍 Search folders",
+                    help="Type to filter folders by name or path",
+                    placeholder="Type to search folders..."
+                )
                 
                 # Filter folders based on search term
                 filtered_options = folder_options
@@ -1215,98 +1219,93 @@ def main():
                     ]
                 
                 # Show folder count
-                st.caption(f"Showing {len(filtered_options)} of {len(folder_options)} folders")
+                st.caption(f"Found {len(filtered_options)} of {len(folder_options)} folders")
                 
-                # Create selection options
-                selected_folders = st.multiselect(
-                    "Select folders to process",
-                    options=[f['display_name'] for f in filtered_options],
-                    help="Select one or more folders containing PDFs to process"
-                )
+                # Group folders by path for better organization
+                path_groups = {}
+                for folder in filtered_options:
+                    path = folder['path']
+                    if path not in path_groups:
+                        path_groups[path] = []
+                    path_groups[path].append(folder)
                 
-                if selected_folders:
-                    # Map selected folder names back to folder IDs
-                    selected_folder_info = [
-                        next(f for f in folder_options if f['display_name'] == folder_name)
-                        for folder_name in selected_folders
-                    ]
+                # Create tabs for different views
+                tab1, tab2 = st.tabs(["📂 Tree View", "📋 List View"])
+                
+                with tab1:
+                    # Show folders in a tree-like structure
+                    for path, folders in sorted(path_groups.items()):
+                        if path == "Root":
+                            st.markdown("### 📂 Root Level")
+                        else:
+                            st.markdown(f"### 📂 {path}")
+                        
+                        # Create a grid of folder checkboxes
+                        cols = st.columns(3)
+                        for idx, folder in enumerate(sorted(folders, key=lambda x: x['name'].lower())):
+                            with cols[idx % 3]:
+                                folder_key = f"folder_{folder['id']}"
+                                if folder_key not in st.session_state:
+                                    st.session_state[folder_key] = False
+                                st.session_state[folder_key] = st.checkbox(
+                                    f"📁 {folder['name']}",
+                                    value=folder['display_name'] in selected_folders,
+                                    key=folder_key
+                                )
+                                if st.session_state[folder_key]:
+                                    if folder['display_name'] not in selected_folders:
+                                        selected_folders.append(folder['display_name'])
+                                else:
+                                    if folder['display_name'] in selected_folders:
+                                        selected_folders.remove(folder['display_name'])
+                
+                with tab2:
+                    # Show folders in a simple list with select all option
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        if st.button("Select All", use_container_width=True):
+                            selected_folders = [f['display_name'] for f in filtered_options]
+                    with col2:
+                        if st.button("Clear Selection", use_container_width=True):
+                            selected_folders = []
                     
-                    if st.button("Extract Transactions", type="primary"):
-                        with st.spinner("Processing files and extracting transactions..."):
-                            try:
-                                # Create or get spreadsheet
-                                if not st.session_state.spreadsheet_id:
-                                    st.session_state.spreadsheet_id = st.session_state.sheets_handler.create_spreadsheet("PDF Processor Transactions")
-                                    if not st.session_state.spreadsheet_id:
-                                        st.error("Failed to create Google Sheet for transactions")
-                                        return
-                                
-                                total_files = 0
-                                processed_files = 0
-                                
-                                # Process each selected folder
-                                for folder_info in selected_folder_info:
-                                    # Get PDFs in folder
-                                    pdfs = st.session_state.drive_handler.list_files(folder_info['id'], file_type='application/pdf')
-                                    if pdfs:
-                                        total_files += len(pdfs)
-                                        
-                                        # Create progress bar for this folder
-                                        st.write(f"Processing folder: {folder_info['display_name']}")
-                                        progress_bar = st.progress(0)
-                                        
-                                        for idx, pdf in enumerate(pdfs):
-                                            try:
-                                                # Update progress
-                                                progress = (idx + 1) / len(pdfs)
-                                                progress_bar.progress(progress)
-                                                
-                                                # Download PDF
-                                                file_data = st.session_state.drive_handler.download_file(pdf['id'])
-                                                if file_data:
-                                                    # Extract transactions
-                                                    _, _, _, transactions = st.session_state.pdf_handler.process_pdf(
-                                                        file_data,
-                                                        folder_info['name'],
-                                                        None,
-                                                        None
-                                                    )
-                                                    
-                                                    # Write transactions to sheet
-                                                    if transactions:
-                                                        if st.session_state.sheets_handler.write_transactions(
-                                                            st.session_state.spreadsheet_id,
-                                                            folder_info['name'],
-                                                            transactions,
-                                                            pdf['name']
-                                                        ):
-                                                            processed_files += 1
-                                                            st.write(f"✓ Processed: {pdf['name']}")
-                                                        else:
-                                                            st.write(f"✗ Failed to write transactions: {pdf['name']}")
-                                                    else:
-                                                        st.write(f"⚠ No transactions found in: {pdf['name']}")
-                                                
-                                            except Exception as e:
-                                                logger.error(f"Error processing file {pdf['name']}: {str(e)}")
-                                                st.error(f"Error processing {pdf['name']}: {str(e)}")
-                                            
-                                            # Clear progress bar after folder is complete
-                                            progress_bar.empty()
-                                        else:
-                                            st.warning(f"No PDF files found in folder: {folder_info['display_name']}")
-                                    
-                                    # Show final results
-                                    if processed_files > 0:
-                                        st.success(f"Successfully processed {processed_files} out of {total_files} files")
-                                        sheet_url = f"https://docs.google.com/spreadsheets/d/{st.session_state.spreadsheet_id}"
-                                        st.markdown(f"[View transactions in Google Sheets]({sheet_url})")
-                                    else:
-                                        st.warning("No files were processed successfully")
-                                
-                            except Exception as e:
-                                logger.error(f"Error during transaction extraction: {str(e)}")
-                                st.error(f"An error occurred: {str(e)}")
+                    # Show folders in a table format
+                    folder_data = []
+                    for folder in filtered_options:
+                        folder_data.append({
+                            "Selected": "✓" if folder['display_name'] in selected_folders else "",
+                            "Folder Name": folder['name'],
+                            "Path": folder['path'] if folder['path'] != "Root" else "/"
+                        })
+                    if folder_data:
+                        st.table(folder_data)
+                
+                # Show selection summary
+                if selected_folders:
+                    st.markdown("### 📋 Selected Folders")
+                    st.info(f"Selected {len(selected_folders)} folders for processing")
+                    
+                    # Show selected folders in a collapsible section
+                    with st.expander("View Selected Folders", expanded=True):
+                        for folder_name in selected_folders:
+                            folder_info = next(f for f in folder_options if f['display_name'] == folder_name)
+                            st.markdown(f"""
+                            - 📁 **{folder_info['name']}**
+                              - Path: `{folder_info['path']}`
+                              - Full Path: `{folder_info['display_name']}`
+                            """)
+                
+                    # Add the process button only if folders are selected
+                    col1, col2, col3 = st.columns([2, 2, 2])
+                    with col2:
+                        st.button(
+                            "🔄 Process Selected Folders",
+                            type="primary",
+                            use_container_width=True,
+                            help="Start processing the selected folders"
+                        )
+                else:
+                    st.warning("Please select at least one folder to process")
             
             except Exception as e:
                 logger.error(f"Error in Phase 2: {str(e)}")
