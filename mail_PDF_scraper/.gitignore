@@ -25,8 +25,6 @@ venv/
 ENV/
 env/
 .env
-.venv/
-.python-version
 
 # IDE
 .idea/
@@ -36,15 +34,11 @@ env/
 .project
 .pydevproject
 .settings
-*.sublime-project
-*.sublime-workspace
 
 # Logs
 *.log
 logs/
 log/
-*.log.*
-.log/
 
 # Google API
 credentials.json
@@ -52,47 +46,30 @@ token.json
 .credentials/
 client_secrets.json
 *.pickle
-token.pickle
-service_account.json
-oauth2.keys.json
-client_secret*.json
 
 # Session and Security
 .session.key
 .session/
 *.key
 *.pem
-.secrets/
-secrets.yaml
-secrets.yml
-secrets.json
 
 # OS
 .DS_Store
 Thumbs.db
 desktop.ini
-.directory
-*.swp
-*.bak
-*~
 
 # Streamlit
 .streamlit/secrets.toml
 .streamlit/config.toml
-.streamlit/*.toml
 
 # Temporary files
 *.tmp
 *.temp
 temp/
 tmp/
-.cache/
-.pytest_cache/
 
 # PDF files (in case any get saved locally)
 *.pdf
-downloads/
-processed/
 
 # Chrome Extension Specific
 *.pem
@@ -107,26 +84,7 @@ client_secret*.json
 *.crt
 *.csr
 secrets/
-.env.*
-.env.local
-.env.*.local
 
 # Audit logs
 audit_logs/
 **/audit_log_*.json
-audit/
-.audit/
-
-# Coverage reports
-.coverage
-coverage.xml
-htmlcov/
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb

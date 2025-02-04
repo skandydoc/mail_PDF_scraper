@@ -1,116 +1,78 @@
 # Gmail PDF Attachment Processor
 
-A secure tool for downloading and organizing PDF attachments from Gmail, with support for transaction extraction and Google Sheets integration.
+A secure and efficient tool for downloading and organizing PDF attachments from Gmail, with special focus on credit card statements.
 
 Composed with Cursor - Use with Discretion. AI hallucinations and potential errors are possible.
 
 ## Features
 
-- Secure Gmail integration with OAuth2 authentication
-- PDF attachment download and organization
-- Transaction extraction from PDF statements
-- Google Sheets integration for transaction data
-- Folder-based organization in Google Drive
-- Password-protected PDF support
-- Search by keywords or content
-- Batch processing capabilities
+- Search Gmail for PDF attachments using keywords
+- Process password-protected PDFs and save unencrypted versions
+- Organize files in Google Drive with customizable folder structure
+- Extract and organize transactions from credit card statements
+- Automatically create and update Google Sheets with transaction data
+- Support for exact and content-based matches
+- Secure authentication and session management
+- IST timezone support
+- Customizable file naming based on email dates
 
-## Prerequisites
+## Key Benefits
 
-1. Python 3.8 or higher
-2. Google Cloud Project with the following APIs enabled:
-   - Gmail API
-   - Google Drive API
-   - Google Sheets API
+- Automatically creates separate folders for each search keyword
+- Saves unencrypted versions of PDFs for easy access
+- Creates a Google Sheet with transaction details
+- Each group of files gets its own sheet tab
+- Transactions are formatted with clear separators and file references
+- Pastel green background for better readability
 
-## Setup Instructions
+## Setup
 
-1. **Create a Google Cloud Project**:
-   - Go to [Google Cloud Console](https://console.cloud.google.com)
-   - Create a new project or select an existing one
-   - Enable the required APIs:
-     - [Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com)
-     - [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)
-     - [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com)
-
-2. **Configure OAuth Consent Screen**:
-   - Go to "OAuth consent screen" in the Google Cloud Console
-   - Configure the consent screen (Internal or External)
-   - Add the required scopes:
-     - `https://www.googleapis.com/auth/gmail.readonly`
-     - `https://www.googleapis.com/auth/drive.file`
-     - `https://www.googleapis.com/auth/spreadsheets`
-
-3. **Create OAuth 2.0 Credentials**:
-   - Go to "Credentials" in the Google Cloud Console
-   - Create OAuth 2.0 Client ID credentials
-   - Download the credentials and save as `credentials.json` in the project root
-
-4. **Set Up Python Environment**:
+1. Create a Google Cloud Project and enable Gmail, Drive, and Sheets APIs
+2. Download credentials.json and place it in the project root
+3. Install dependencies:
    ```bash
-   # Create virtual environment
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-   # Install dependencies
    pip install -r requirements.txt
-   ```
-
-5. **Configure Streamlit**:
-   ```bash
-   mkdir -p ~/.streamlit
-   echo 'browser.gatherUsageStats = false' > ~/.streamlit/config.toml
    ```
 
 ## Usage
 
-1. Start the application:
+1. Run the application:
    ```bash
    streamlit run app.py
    ```
+2. Sign in with your Google account
+3. Enter search keywords
+4. Select files to process
+5. Configure folder structure and passwords if needed
+6. Process files
+7. Access your processed files in Google Drive and transactions in Google Sheets
 
-2. Sign in with your Google account when prompted
+## Output Structure
 
-3. Use Phase 1 to:
-   - Search for emails with PDF attachments
-   - Download and organize PDFs in Google Drive
+- All processed files are saved in a "PDF Processor Output" folder in Google Drive
+- Each search keyword gets its own subfolder
+- A Google Sheet named "PDF Processor Transactions" is created
+- Each keyword gets its own sheet tab
+- Transactions are organized with:
+  - File name as header with pastel green background
+  - Transaction details in rows
+  - 3-row spacing between different files
+  - Clear date, description, and amount columns
 
-4. Use Phase 2 to:
-   - Extract transactions from organized PDFs
-   - View and analyze transaction data in Google Sheets
+## Security
 
-## Security Features
-
-- OAuth 2.0 authentication
-- Secure credential handling
-- Session management
-- Audit logging
-- Password handling for protected PDFs
-
-## Error Handling
-
-If you encounter the "Google Sheets API not enabled" error:
-1. Go to [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com)
-2. Select your project
-3. Click 'Enable'
-4. Wait a few minutes for the change to propagate
-5. Sign out and sign back in to the application
-
-## Contributing
-
-Please read CONTRIBUTING.md for details on our code of conduct and the process for submitting pull requests.
+- All sensitive data is handled securely
+- No passwords are stored permanently
+- Uses OAuth 2.0 for authentication
+- Supports session management
+- Follows best practices for credential handling
 
 ## License
+This project is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-SA NC 4.0). You can view the full license [here](https://creativecommons.org/licenses/by-nc-sa/4.0/).
 
-This project is licensed under CC BY-SA NC 4.0 (Creative Commons Attribution-ShareAlike Non-commercial 4.0 International licence).
+![CC BY-NC-SA 4.0](https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png)
 
-## Acknowledgments
-
-- Google Cloud Platform
-- Streamlit
-- PyPDF2
-- Google API Python Client
-
-## Support
-
-For support or feature requests, please visit our GitHub repository.
+## Disclaimer
+This software is provided "as is", without warranty of any kind, express or implied. The creators and contributors shall not be liable for any claim, damages, or other liability arising from the use of the software.

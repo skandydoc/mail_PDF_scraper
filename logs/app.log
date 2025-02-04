@@ -1,0 +1,92 @@
+2025-02-04 19:40:37,063 - root - INFO - Initialized authentication state
+2025-02-04 19:40:37,063 - utils.pdf_handler - INFO - PDF handler initialized
+2025-02-04 19:40:37,063 - utils.security - INFO - Created audit logs directory
+2025-02-04 19:40:37,075 - root - INFO - Application started
+2025-02-04 19:40:38,972 - root - INFO - Application started
+2025-02-04 19:40:38,974 - root - INFO - Starting handler initialization
+2025-02-04 19:40:38,975 - utils.gmail_handler - INFO - Gmail handler initialized
+2025-02-04 19:40:38,975 - utils.gmail_handler - INFO - Starting authentication process
+2025-02-04 19:40:38,975 - utils.gmail_handler - ERROR - credentials.json not found in project root directory
+2025-02-04 19:40:38,975 - utils.gmail_handler - ERROR - credentials.json not found. Please follow the setup instructions in README.md to create and download your Google Cloud credentials.
+2025-02-04 19:40:38,975 - root - ERROR - Error initializing handlers: credentials.json not found. Please follow the setup instructions in README.md to create and download your Google Cloud credentials.
+2025-02-04 19:40:39,894 - root - INFO - Application started
+2025-02-04 19:40:39,898 - root - INFO - Starting handler initialization
+2025-02-04 19:40:39,898 - utils.gmail_handler - INFO - Gmail handler initialized
+2025-02-04 19:40:39,898 - utils.gmail_handler - INFO - Starting authentication process
+2025-02-04 19:40:39,898 - utils.gmail_handler - ERROR - credentials.json not found in project root directory
+2025-02-04 19:40:39,898 - utils.gmail_handler - ERROR - credentials.json not found. Please follow the setup instructions in README.md to create and download your Google Cloud credentials.
+2025-02-04 19:40:39,898 - root - ERROR - Error initializing handlers: credentials.json not found. Please follow the setup instructions in README.md to create and download your Google Cloud credentials.
+2025-02-04 19:41:13,305 - root - INFO - Initialized authentication state
+2025-02-04 19:41:13,305 - utils.pdf_handler - INFO - PDF handler initialized
+2025-02-04 19:41:13,306 - root - INFO - Application started
+2025-02-04 19:41:14,567 - root - INFO - Application started
+2025-02-04 19:41:14,570 - root - INFO - Starting handler initialization
+2025-02-04 19:41:14,571 - utils.gmail_handler - INFO - Gmail handler initialized
+2025-02-04 19:41:14,571 - utils.gmail_handler - INFO - Starting authentication process
+2025-02-04 19:41:14,572 - utils.gmail_handler - INFO - Starting OAuth flow
+2025-02-04 19:41:26,149 - google_auth_oauthlib.flow - INFO - "GET /?state=nKVRKYqJocwidd00dTdYmLnJ8Qmvdy&code=4/0ASVgi3L9stu39MtWSK6WR-fQXkH9cpnWvLSWQXlqVtV_kyK-pIg6IUBPGXTlvTQ_nUV23g&scope=https://www.googleapis.com/auth/gmail.readonly%20https://www.googleapis.com/auth/drive.file HTTP/1.1" 200 53
+2025-02-04 19:41:29,585 - utils.gmail_handler - INFO - OAuth flow completed successfully
+2025-02-04 19:41:29,585 - utils.gmail_handler - INFO - Saving credentials to token.pickle
+2025-02-04 19:41:29,586 - utils.gmail_handler - INFO - Credentials saved successfully
+2025-02-04 19:41:29,589 - googleapiclient.discovery_cache - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-04 19:41:29,591 - utils.gmail_handler - INFO - Gmail service initialized successfully
+2025-02-04 19:41:29,592 - googleapiclient.discovery_cache - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-04 19:41:29,594 - root - ERROR - Error initializing handlers: name 'SheetsHandler' is not defined
+2025-02-04 19:41:32,338 - root - INFO - Application started
+2025-02-04 19:41:33,963 - root - INFO - Application started
+2025-02-04 19:41:33,994 - root - INFO - Application started
+2025-02-04 19:41:39,078 - root - INFO - Application started
+2025-02-04 19:41:39,697 - utils.drive_handler - INFO - Drive API access verified for user: skanthavelanb@gmail.com
+2025-02-04 19:41:47,398 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:41:48,737 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:41:50,193 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:41:51,679 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:41:52,622 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:41:54,022 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:41:55,370 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:41:56,679 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:41:58,025 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:41:58,996 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:42:15,182 - root - INFO - Application started
+2025-02-04 19:42:20,697 - root - INFO - Application started
+2025-02-04 19:42:20,740 - root - INFO - Application started
+2025-02-04 19:42:32,583 - root - INFO - Application started
+2025-02-04 19:42:32,626 - root - INFO - Application started
+2025-02-04 19:42:34,331 - root - INFO - Application started
+2025-02-04 19:42:34,370 - root - INFO - Application started
+2025-02-04 19:42:35,464 - root - INFO - Application started
+2025-02-04 19:42:35,508 - root - INFO - Application started
+2025-02-04 19:42:35,673 - root - INFO - Application started
+2025-02-04 19:42:35,702 - root - INFO - Application started
+2025-02-04 19:51:11,504 - root - INFO - Initialized authentication state
+2025-02-04 19:51:11,504 - utils.pdf_handler - INFO - PDF handler initialized
+2025-02-04 19:51:11,516 - root - INFO - Application started
+2025-02-04 19:51:12,807 - root - INFO - Application started
+2025-02-04 19:51:12,809 - root - INFO - Starting handler initialization
+2025-02-04 19:51:12,809 - utils.gmail_handler - INFO - Gmail handler initialized
+2025-02-04 19:51:12,809 - utils.gmail_handler - INFO - Starting authentication process
+2025-02-04 19:51:12,809 - utils.gmail_handler - INFO - Found existing token.pickle file
+2025-02-04 19:51:12,812 - googleapiclient.discovery_cache - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-04 19:51:12,813 - utils.gmail_handler - INFO - Gmail service initialized successfully
+2025-02-04 19:51:12,814 - googleapiclient.discovery_cache - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-04 19:51:12,815 - root - ERROR - Error initializing handlers: name 'SheetsHandler' is not defined
+2025-02-04 19:51:13,781 - root - INFO - Application started
+2025-02-04 19:51:15,111 - root - INFO - Application started
+2025-02-04 19:51:15,138 - root - INFO - Application started
+2025-02-04 19:51:16,637 - root - INFO - Application started
+2025-02-04 19:51:17,013 - utils.drive_handler - INFO - Drive API access verified for user: skanthavelanb@gmail.com
+2025-02-04 19:51:23,269 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:51:24,622 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:51:25,890 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:51:27,134 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:51:27,982 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:51:29,268 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:51:30,519 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:51:31,762 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:51:32,993 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:51:33,884 - utils.drive_handler - ERROR - Error getting folder details for 0AFZW6ptm_0wqUk9PVA: <HttpError 404 when requesting https://www.googleapis.com/drive/v3/files/0AFZW6ptm_0wqUk9PVA?fields=id%2C+name%2C+parents&supportsAllDrives=true&alt=json returned "File not found: 0AFZW6ptm_0wqUk9PVA.". Details: "[{'message': 'File not found: 0AFZW6ptm_0wqUk9PVA.', 'domain': 'global', 'reason': 'notFound', 'location': 'fileId', 'locationType': 'parameter'}]">
+2025-02-04 19:51:37,051 - root - INFO - Application started
+2025-02-04 19:51:41,878 - root - INFO - Application started
+2025-02-04 21:35:46,068 - root - INFO - Initialized authentication state
+2025-02-04 21:35:46,068 - utils.pdf_handler - INFO - PDF handler initialized
+2025-02-04 21:35:46,079 - root - ERROR - Error in main app: name 'authenticate_user' is not defined
