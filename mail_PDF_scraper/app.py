@@ -1120,54 +1120,55 @@ def main():
                     help="Choose whether to use the default output folder or select a custom folder from Google Drive"
                 )
                 
-                try:
-                    # Clear folder options when source changes
-                    if 'last_folder_source' not in st.session_state or st.session_state.last_folder_source != folder_source:
-                        st.session_state.folder_options = []
-                        st.session_state.last_folder_source = folder_source
-                    
-                    # Load folders if not already loaded
-                    if not st.session_state.folder_options:
-                        with st.spinner("Loading folders..."):
-                            try:
-                                if folder_source == "Default Output Folder":
-                                    # Get available folders from default location
-                                    base_folder_id = st.session_state.drive_handler.check_folder_exists(st.session_state.main_folder_name)
-                                    if base_folder_id:
-                                        default_folders = st.session_state.drive_handler.list_folders(base_folder_id)
-                                        if default_folders:
-                                            for folder in default_folders:
-                                                st.session_state.folder_options.append({
-                                                    'id': folder['id'],
-                                                    'name': folder['name'],
-                                                    'path': st.session_state.main_folder_name,
-                                                    'display_name': f"{st.session_state.main_folder_name}/{folder['name']}"
-                                                })
-                                        else:
-                                            st.warning("No folders found in the default output directory. Please process some files in Phase 1 first or select a custom folder.")
+                # Clear folder options when source changes
+                if 'last_folder_source' not in st.session_state or st.session_state.last_folder_source != folder_source:
+                    st.session_state.folder_options = []
+                    st.session_state.last_folder_source = folder_source
+                
+                # Load folders if not already loaded
+                if not st.session_state.folder_options:
+                    with st.spinner("Loading folders..."):
+                        try:
+                            if folder_source == "Default Output Folder":
+                                # Get available folders from default location
+                                base_folder_id = st.session_state.drive_handler.check_folder_exists(st.session_state.main_folder_name)
+                                if base_folder_id:
+                                    default_folders = st.session_state.drive_handler.list_folders(base_folder_id)
+                                    if default_folders:
+                                        for folder in default_folders:
+                                            st.session_state.folder_options.append({
+                                                'id': folder['id'],
+                                                'name': folder['name'],
+                                                'path': st.session_state.main_folder_name,
+                                                'display_name': f"{st.session_state.main_folder_name}/{folder['name']}"
+                                            })
                                     else:
-                                        st.warning("Default output folder not found. Please process some files in Phase 1 first or select a custom folder.")
+                                        st.warning("No folders found in the default output directory. Please process some files in Phase 1 first or select a custom folder.")
                                 else:
-                                    # Get root level folders
-                                    all_folders = st.session_state.drive_handler.list_all_folders()
-                                    if all_folders:
-                                        # Create a hierarchical folder structure for display
-                                        for folder in all_folders:
-                                            try:
-                                                # Get folder path with progress indicator
-                                                path = st.session_state.drive_handler.get_folder_path(folder['id'])
-                                                st.session_state.folder_options.append({
-                                                    'id': folder['id'],
-                                                    'name': folder['name'],
-                                                    'path': path,
-                                                    'display_name': f"{path}/{folder['name']}" if path != "Root" else folder['name']
-                                                })
-                                            except Exception as e:
-                                                logger.error(f"Error getting path for folder {folder['name']}: {str(e)}")
-                                                continue
+                                    st.warning("Default output folder not found. Please process some files in Phase 1 first or select a custom folder.")
+                            else:
+                                # Get root level folders
+                                all_folders = st.session_state.drive_handler.list_all_folders()
+                                if all_folders:
+                                    # Create a hierarchical folder structure for display
+                                    for folder in all_folders:
+                                        try:
+                                            # Get folder path with progress indicator
+                                            path = st.session_state.drive_handler.get_folder_path(folder['id'])
+                                            st.session_state.folder_options.append({
+                                                'id': folder['id'],
+                                                'name': folder['name'],
+                                                'path': path,
+                                                'display_name': f"{path}/{folder['name']}" if path != "Root" else folder['name']
+                                            })
+                                        except Exception as e:
+                                            logger.error(f"Error getting path for folder {folder['name']}: {str(e)}")
+                                            continue
                             
                             # Sort folders by path for better organization
-                            st.session_state.folder_options.sort(key=lambda x: x['display_name'].lower())
+                            if st.session_state.folder_options:
+                                st.session_state.folder_options.sort(key=lambda x: x['display_name'].lower())
+                            
                         except Exception as e:
                             error_msg = str(e)
                             logger.error(f"Error loading folders: {error_msg}")
@@ -1184,137 +1185,138 @@ def main():
                             else:
                                 st.error(f"Error accessing Google Drive: {error_msg}")
                             return
-                    
-                    if st.session_state.folder_options:
-                        # Create selection options with search/filter
-                        st.subheader("Select Folders to Process")
-                        
-                        # Add search box for filtering folders
-                        search_term = st.text_input(
-                            "🔍 Search folders",
-                            help="Type to filter folders by name or path",
-                            placeholder="Type to search folders..."
-                        )
-                        
-                        # Filter folders based on search term
-                        filtered_options = st.session_state.folder_options
-                        if search_term:
-                            search_term = search_term.lower()
-                            filtered_options = [
-                                f for f in st.session_state.folder_options 
-                                if search_term in f['display_name'].lower()
-                            ]
-                        
-                        # Show folder count
-                        st.caption(f"Found {len(filtered_options)} of {len(st.session_state.folder_options)} folders")
-                        
-                        # Group folders by path for better organization
-                        path_groups = {}
-                        for folder in filtered_options:
-                            path = folder['path']
-                            if path not in path_groups:
-                                path_groups[path] = []
-                            path_groups[path].append(folder)
-                        
-                        # Create tabs for different views
-                        tab1, tab2 = st.tabs(["📂 Tree View", "📋 List View"])
-                        
-                        with tab1:
-                            # Show folders in a tree-like structure
-                            for path, folders in sorted(path_groups.items()):
-                                if path == "Root":
-                                    st.markdown("### 📂 Root Level")
-                                else:
-                                    st.markdown(f"### 📂 {path}")
-                                
-                                # Create a grid of folder checkboxes
-                                cols = st.columns(3)
-                                for idx, folder in enumerate(sorted(folders, key=lambda x: x['name'].lower())):
-                                    with cols[idx % 3]:
-                                        folder_key = f"folder_{folder['id']}"
-                                        if folder_key not in st.session_state:
-                                            st.session_state[folder_key] = folder['display_name'] in st.session_state.selected_folders
-                                        
-                                        # Update checkbox state
-                                        st.session_state[folder_key] = st.checkbox(
-                                            f"📁 {folder['name']}",
-                                            value=st.session_state[folder_key],
-                                            key=f"{folder_key}_{idx}"
-                                        )
-                                        
-                                        # Update selected folders list
-                                        if st.session_state[folder_key]:
-                                            if folder['display_name'] not in st.session_state.selected_folders:
-                                                st.session_state.selected_folders.append(folder['display_name'])
-                                        else:
-                                            if folder['display_name'] in st.session_state.selected_folders:
-                                                st.session_state.selected_folders.remove(folder['display_name'])
-                        
-                        with tab2:
-                            # Show folders in a simple list with select all option
-                            col1, col2 = st.columns([1, 4])
-                            with col1:
-                                if st.button("Select All", use_container_width=True, key="select_all_folders"):
-                                    st.session_state.selected_folders = [f['display_name'] for f in filtered_options]
-                                    for folder in filtered_options:
-                                        st.session_state[f"folder_{folder['id']}"] = True
-                                    st.rerun()
-                            with col2:
-                                if st.button("Clear Selection", use_container_width=True, key="clear_all_folders"):
-                                    st.session_state.selected_folders = []
-                                    for folder in filtered_options:
-                                        st.session_state[f"folder_{folder['id']}"] = False
-                                    st.rerun()
-                            
-                            # Show folders in a table format
-                            folder_data = []
-                            for folder in filtered_options:
-                                folder_data.append({
-                                    "Selected": "✓" if folder['display_name'] in st.session_state.selected_folders else "",
-                                    "Folder Name": folder['name'],
-                                    "Path": folder['path'] if folder['path'] != "Root" else "/"
-                                })
-                            if folder_data:
-                                st.table(folder_data)
-                        
-                        # Show selection summary
-                        if st.session_state.selected_folders:
-                            st.markdown("### 📋 Selected Folders")
-                            st.info(f"Selected {len(st.session_state.selected_folders)} folders for processing")
-                            
-                            # Show selected folders in a collapsible section
-                            with st.expander("View Selected Folders", expanded=True):
-                                for folder_name in st.session_state.selected_folders:
-                                    folder_info = next(f for f in st.session_state.folder_options if f['display_name'] == folder_name)
-                                    st.markdown(f"""
-                                    - 📁 **{folder_info['name']}**
-                                      - Path: `{folder_info['path']}`
-                                      - Full Path: `{folder_info['display_name']}`
-                                    """)
-                            
-                            # Add the process button only if folders are selected
-                            col1, col2, col3 = st.columns([2, 2, 2])
-                            with col2:
-                                if st.button(
-                                    "🔄 Process Selected Folders",
-                                    type="primary",
-                                    use_container_width=True,
-                                    help="Start processing the selected folders",
-                                    key="process_selected_folders"
-                                ):
-                                    # Get selected folder info
-                                    selected_folder_info = [
-                                        next(f for f in st.session_state.folder_options if f['display_name'] == folder_name)
-                                        for folder_name in st.session_state.selected_folders
-                                    ]
-                                    st.session_state.selected_folder_info = selected_folder_info
-                                    st.session_state.processing_started = True
-                                    st.rerun()
-                        else:
-                            st.warning("Please select at least one folder to process")
-                    else:
-                        st.warning("No accessible folders found. Please check your Google Drive permissions.")
                 
+                # Display folder options if available
+                if st.session_state.folder_options:
+                    # Create selection options with search/filter
+                    st.subheader("Select Folders to Process")
+                    
+                    # Add search box for filtering folders
+                    search_term = st.text_input(
+                        "🔍 Search folders",
+                        help="Type to filter folders by name or path",
+                        placeholder="Type to search folders..."
+                    )
+                    
+                    # Filter folders based on search term
+                    filtered_options = st.session_state.folder_options
+                    if search_term:
+                        search_term = search_term.lower()
+                        filtered_options = [
+                            f for f in st.session_state.folder_options 
+                            if search_term in f['display_name'].lower()
+                        ]
+                    
+                    # Show folder count
+                    st.caption(f"Found {len(filtered_options)} of {len(st.session_state.folder_options)} folders")
+                    
+                    # Group folders by path for better organization
+                    path_groups = {}
+                    for folder in filtered_options:
+                        path = folder['path']
+                        if path not in path_groups:
+                            path_groups[path] = []
+                        path_groups[path].append(folder)
+                    
+                    # Create tabs for different views
+                    tab1, tab2 = st.tabs(["📂 Tree View", "📋 List View"])
+                    
+                    with tab1:
+                        # Show folders in a tree-like structure
+                        for path, folders in sorted(path_groups.items()):
+                            if path == "Root":
+                                st.markdown("### 📂 Root Level")
+                            else:
+                                st.markdown(f"### 📂 {path}")
+                            
+                            # Create a grid of folder checkboxes
+                            cols = st.columns(3)
+                            for idx, folder in enumerate(sorted(folders, key=lambda x: x['name'].lower())):
+                                with cols[idx % 3]:
+                                    folder_key = f"folder_{folder['id']}"
+                                    if folder_key not in st.session_state:
+                                        st.session_state[folder_key] = folder['display_name'] in st.session_state.selected_folders
+                                    
+                                    # Update checkbox state
+                                    st.session_state[folder_key] = st.checkbox(
+                                        f"📁 {folder['name']}",
+                                        value=st.session_state[folder_key],
+                                        key=f"{folder_key}_{idx}"
+                                    )
+                                    
+                                    # Update selected folders list
+                                    if st.session_state[folder_key]:
+                                        if folder['display_name'] not in st.session_state.selected_folders:
+                                            st.session_state.selected_folders.append(folder['display_name'])
+                                    else:
+                                        if folder['display_name'] in st.session_state.selected_folders:
+                                            st.session_state.selected_folders.remove(folder['display_name'])
+                    
+                    with tab2:
+                        # Show folders in a simple list with select all option
+                        col1, col2 = st.columns([1, 4])
+                        with col1:
+                            if st.button("Select All", use_container_width=True, key="select_all_folders"):
+                                st.session_state.selected_folders = [f['display_name'] for f in filtered_options]
+                                for folder in filtered_options:
+                                    st.session_state[f"folder_{folder['id']}"] = True
+                                st.rerun()
+                        with col2:
+                            if st.button("Clear Selection", use_container_width=True, key="clear_all_folders"):
+                                st.session_state.selected_folders = []
+                                for folder in filtered_options:
+                                    st.session_state[f"folder_{folder['id']}"] = False
+                                st.rerun()
+                        
+                        # Show folders in a table format
+                        folder_data = []
+                        for folder in filtered_options:
+                            folder_data.append({
+                                "Selected": "✓" if folder['display_name'] in st.session_state.selected_folders else "",
+                                "Folder Name": folder['name'],
+                                "Path": folder['path'] if folder['path'] != "Root" else "/"
+                            })
+                        if folder_data:
+                            st.table(folder_data)
+                    
+                    # Show selection summary
+                    if st.session_state.selected_folders:
+                        st.markdown("### 📋 Selected Folders")
+                        st.info(f"Selected {len(st.session_state.selected_folders)} folders for processing")
+                        
+                        # Show selected folders in a collapsible section
+                        with st.expander("View Selected Folders", expanded=True):
+                            for folder_name in st.session_state.selected_folders:
+                                folder_info = next(f for f in st.session_state.folder_options if f['display_name'] == folder_name)
+                                st.markdown(f"""
+                                - 📁 **{folder_info['name']}**
+                                  - Path: `{folder_info['path']}`
+                                  - Full Path: `{folder_info['display_name']}`
+                                """)
+                        
+                        # Add the process button only if folders are selected
+                        col1, col2, col3 = st.columns([2, 2, 2])
+                        with col2:
+                            if st.button(
+                                "🔄 Process Selected Folders",
+                                type="primary",
+                                use_container_width=True,
+                                help="Start processing the selected folders",
+                                key="process_selected_folders"
+                            ):
+                                # Get selected folder info
+                                selected_folder_info = [
+                                    next(f for f in st.session_state.folder_options if f['display_name'] == folder_name)
+                                    for folder_name in st.session_state.selected_folders
+                                ]
+                                st.session_state.selected_folder_info = selected_folder_info
+                                st.session_state.processing_started = True
+                                st.rerun()
+                    else:
+                        st.warning("Please select at least one folder to process")
+                else:
+                    st.warning("No accessible folders found. Please check your Google Drive permissions.")
+            
             except Exception as e:
                 logger.error(f"Error in Phase 2: {str(e)}")
                 st.error(f"An error occurred in Phase 2: {str(e)}")
