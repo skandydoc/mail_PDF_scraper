@@ -1008,7 +1008,7 @@ def main():
                                     if att['id'] in st.session_state[sender_key]
                                 ])
                         
-                        # Show selection summary
+                        # Show selection summary and process files if any selected
                         if selected_exact_attachments or selected_content_attachments:
                             show_selection_summary()
                             
@@ -1019,7 +1019,7 @@ def main():
                                     st.session_state.processing_started = True
                                     st.session_state.processing_complete = False
                                     st.rerun()
-                        
+                            
                             # Handle processing in a separate block to avoid streamlit async issues
                             if st.session_state.get('processing_started', False) and not st.session_state.get('processing_complete', False):
                                 with st.spinner("Processing files..."):
@@ -1085,16 +1085,20 @@ def main():
                                         st.error(f"An error occurred during processing: {str(e)}")
                                         st.session_state.processing_complete = True
                                         st.session_state.processing_started = False
-                        
-                        # Show results after processing is complete
-                        if st.session_state.get('processing_complete', False) and hasattr(st.session_state, 'results_by_group'):
-                            # Show final status
-                            show_final_status(st.session_state.results_by_group)
                             
-                            # Show detailed results
-                            show_processing_results(st.session_state.results_by_group)
-                    else:
-                        st.warning("Please select at least one file to process")
+                            # Show results after processing is complete
+                            if st.session_state.get('processing_complete', False) and hasattr(st.session_state, 'results_by_group'):
+                                # Show final status
+                                show_final_status(st.session_state.results_by_group)
+                                
+                                # Show detailed results
+                                show_processing_results(st.session_state.results_by_group)
+                        else:
+                            st.warning("Please select at least one file to process")
+                    
+                    except Exception as e:
+                        logger.error(f"Error handling selected files: {str(e)}")
+                        st.error(f"An error occurred while handling selected files: {str(e)}")
                 
                 except Exception as e:
                     logger.error(f"Error handling selected files: {str(e)}")
