@@ -42,14 +42,28 @@ ENV/
 ehthumbs.db
 Thumbs.db
 
-# Project specific
+# Application Specific
+token.pickle
 credentials.json
-token.json
 *.log
 logs/
-output/
-temp/
-~
-~/
+audit_logs/
 .streamlit/
 config.toml
+
+# Sensitive Data
+*.key
+*.pem
+*.env
+secrets.yaml
+secrets.yml
+secrets.json
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*~
+
+# Documentation
+docs/_build/

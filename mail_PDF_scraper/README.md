@@ -1,78 +1,115 @@
-# Gmail PDF Attachment Processor
+# Gmail PDF Processor
 
-A secure and efficient tool for downloading and organizing PDF attachments from Gmail, with special focus on credit card statements.
+A secure and efficient tool for processing PDF attachments from Gmail, with support for transaction extraction and organization.
 
 Composed with Cursor - Use with Discretion. AI hallucinations and potential errors are possible.
 
 ## Features
 
-- Search Gmail for PDF attachments using keywords
-- Process password-protected PDFs and save unencrypted versions
-- Organize files in Google Drive with customizable folder structure
-- Extract and organize transactions from credit card statements
-- Automatically create and update Google Sheets with transaction data
-- Support for exact and content-based matches
-- Secure authentication and session management
-- IST timezone support
-- Customizable file naming based on email dates
+- Secure Gmail authentication using OAuth2
+- PDF attachment download and processing
+- Smart organization of files in Google Drive
+- Transaction extraction from PDFs
+- Google Sheets integration for transaction tracking
+- Password-protected PDF support
+- Audit logging and security features
+- Two-phase processing:
+  1. Email Processing & PDF Storage
+  2. Transaction Extraction
 
-## Key Benefits
+## Installation
 
-- Automatically creates separate folders for each search keyword
-- Saves unencrypted versions of PDFs for easy access
-- Creates a Google Sheet with transaction details
-- Each group of files gets its own sheet tab
-- Transactions are formatted with clear separators and file references
-- Pastel green background for better readability
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/mail_PDF_scraper.git
+cd mail_PDF_scraper
+```
 
-## Setup
+2. Create and activate a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
 
-1. Create a Google Cloud Project and enable Gmail, Drive, and Sheets APIs
-2. Download credentials.json and place it in the project root
 3. Install dependencies:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+```
+
+4. Set up Google Cloud Project and obtain credentials:
+   - Create a project in Google Cloud Console
+   - Enable Gmail, Drive, and Sheets APIs
+   - Create OAuth2 credentials
+   - Download credentials as `credentials.json`
+
+5. Configure Streamlit:
+```bash
+mkdir -p .streamlit
+echo 'browser.gatherUsageStats = false' > .streamlit/config.toml
+```
 
 ## Usage
 
-1. Run the application:
-   ```bash
-   streamlit run app.py
-   ```
-2. Sign in with your Google account
-3. Enter search keywords
-4. Select files to process
-5. Configure folder structure and passwords if needed
-6. Process files
-7. Access your processed files in Google Drive and transactions in Google Sheets
+1. Start the application:
+```bash
+streamlit run app.py
+```
 
-## Output Structure
+2. Authenticate with your Google account
+3. Select operation phase:
+   - Phase 1: Process emails and store PDFs
+   - Phase 2: Extract transactions from stored PDFs
+4. Follow the UI prompts for each phase
 
-- All processed files are saved in a "PDF Processor Output" folder in Google Drive
-- Each search keyword gets its own subfolder
-- A Google Sheet named "PDF Processor Transactions" is created
-- Each keyword gets its own sheet tab
-- Transactions are organized with:
-  - File name as header with pastel green background
-  - Transaction details in rows
-  - 3-row spacing between different files
-  - Clear date, description, and amount columns
+## Project Structure
 
-## Security
+```
+mail_PDF_scraper/
+├── app.py                    # Main application file
+├── requirements.txt          # Python dependencies
+├── credentials.json          # Google OAuth credentials
+├── utils/                    # Utility modules
+│   ├── gmail_handler.py      # Gmail API integration
+│   ├── drive_handler.py      # Google Drive integration
+│   ├── sheets_handler.py     # Google Sheets integration
+│   ├── pdf_handler.py        # PDF processing
+│   ├── security.py          # Security features
+│   └── logger_config.py     # Logging configuration
+├── logs/                    # Application logs
+├── audit_logs/             # Security audit logs
+└── .streamlit/             # Streamlit configuration
+```
 
-- All sensitive data is handled securely
-- No passwords are stored permanently
-- Uses OAuth 2.0 for authentication
-- Supports session management
-- Follows best practices for credential handling
+## Security Features
+
+- OAuth2 authentication
+- Secure credential handling
+- Audit logging
+- Session management
+- Password handling for protected PDFs
+
+## Error Handling
+
+- Comprehensive error logging
+- User-friendly error messages
+- Graceful failure recovery
+- Transaction validation
+
+## Contributing
+
+Please read CONTRIBUTING.md for details on our code of conduct and the process for submitting pull requests.
 
 ## License
-This project is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-SA NC 4.0). You can view the full license [here](https://creativecommons.org/licenses/by-nc-sa/4.0/).
 
-![CC BY-NC-SA 4.0](https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png)
+This project is licensed under CC BY-SA NC 4.0 (Creative Commons Attribution-ShareAlike Non-commercial 4.0 International licence).
 
-## Disclaimer
-This software is provided "as is", without warranty of any kind, express or implied. The creators and contributors shall not be liable for any claim, damages, or other liability arising from the use of the software.
+## Acknowledgments
+
+- Google Cloud Platform
+- Streamlit
+- PyPDF2
+- Python community
+
+## Support
+
+For support, please open an issue in the GitHub repository or contact the maintainers.
